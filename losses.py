@@ -19,11 +19,10 @@ class LossG(torch.nn.Module):
         imagenet_norm = transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
         global_resize_transform = Resize(cfg['dino_global_patch_size'], max_size=480)
 
-        self.global_transform = transforms.Compose([global_resize_transform,
-                                                    imagenet_norm
-                                                    ])
+        self.global_transform = transforms.Compose([global_resize_transform])
 
         self.lambdas = dict(
+            content_embedding_reg = cfg['content_embedding_reg'],
             lambda_global_cls=cfg['lambda_global_cls'],
             lambda_global_ssim=0,
             lambda_entire_ssim=0,
@@ -43,33 +42,34 @@ class LossG(torch.nn.Module):
             self.lambdas['lambda_entire_ssim'] = 0
             self.lambdas['lambda_entire_cls'] = 0
 
-    def forward(self, outputs, inputs):
-        self.update_lambda_config(inputs['step'])
-        losses = {}
-        loss_G = 0
+    def forward(self, outputs, inputs, content_embedding):
+#         self.update_lambda_config(inputs['step'])
+#         losses = {}
+#         loss_G = 0
 
-        if self.lambdas['lambda_global_ssim'] > 0:
-            losses['loss_global_ssim'] = self.calculate_global_ssim_loss(outputs['x_global'], inputs['A_global'])
-            loss_G += losses['loss_global_ssim'] * self.lambdas['lambda_global_ssim']
+#         if self.lambdas['lambda_global_ssim'] > 0:
+#             losses['loss_global_ssim'] = self.calculate_global_ssim_loss(outputs['x_global'], inputs['A_global'])
+#             loss_G += losses['loss_global_ssim'] * self.lambdas['lambda_global_ssim']
 
-        if self.lambdas['lambda_entire_ssim'] > 0:
-            losses['loss_entire_ssim'] = self.calculate_global_ssim_loss(outputs['x_entire'], inputs['A'])
-            loss_G += losses['loss_entire_ssim'] * self.lambdas['lambda_entire_ssim']
+#         if self.lambdas['lambda_entire_ssim'] > 0:
+#             losses['loss_entire_ssim'] = self.calculate_global_ssim_loss(outputs['x_entire'], inputs['A'])
+#             loss_G += losses['loss_entire_ssim'] * self.lambdas['lambda_entire_ssim']
 
-        if self.lambdas['lambda_entire_cls'] > 0:
-            losses['loss_entire_cls'] = self.calculate_crop_cls_loss(outputs['x_entire'], inputs['B_global'])
-            loss_G += losses['loss_entire_cls'] * self.lambdas['lambda_entire_cls']
+#         if self.lambdas['lambda_entire_cls'] > 0:
+#             losses['loss_entire_cls'] = self.calculate_crop_cls_loss(outputs['x_entire'], inputs['B_global'])
+#             loss_G += losses['loss_entire_cls'] * self.lambdas['lambda_entire_cls']
 
-        if self.lambdas['lambda_global_cls'] > 0:
-            losses['loss_global_cls'] = self.calculate_crop_cls_loss(outputs['x_global'], inputs['B_global'])
-            loss_G += losses['loss_global_cls'] * self.lambdas['lambda_global_cls']
+#         if self.lambdas['lambda_global_cls'] > 0:
+#             losses['loss_global_cls'] = self.calculate_crop_cls_loss(outputs['x_global'], inputs['B_global'])
+#             loss_G += losses['loss_global_cls'] * self.lambdas['lambda_global_cls']
 
-        if self.lambdas['lambda_global_identity'] > 0:
-            losses['loss_global_id_B'] = self.calculate_global_id_loss(outputs['y_global'], inputs['B_global'])
-            loss_G += losses['loss_global_id_B'] * self.lambdas['lambda_global_identity']
+#         if self.lambdas['lambda_global_identity'] > 0:
+#             losses['loss_global_id_B'] = self.calculate_global_id_loss(outputs['y_global'], inputs['B_global'])
+#             loss_G += losses['loss_global_id_B'] * self.lambdas['lambda_global_identity']
 
-        losses['loss'] = loss_G
-        return losses
+#         losses['loss'] = loss_G
+#         return losses
+        return self.calculate_crop_cls_loss(outputs, inputs) + self.calculate_global_ssim_loss(outputs, inputs) + self.calculate_global_id_loss(outputs, inputs) + self.lambdas['content_embedding_reg'] * torch.norm(content_embedding) ** 2
 
     def calculate_global_ssim_loss(self, outputs, inputs):
         loss = 0.0
@@ -103,3 +103,13 @@ class LossG(torch.nn.Module):
             keys_b = self.extractor.get_keys_from_input(b.unsqueeze(0), 11)
             loss += F.mse_loss(keys_a, keys_b)
         return loss
+
+class NaiveLoss(torch.nn.Module):
+    def __init__(self, cfg):
+        super().__init__()
+        
+    def forward(self, outputs, inputs, content_embedding):
+        l1_loss = torch.nn.L1Loss(reduction='mean')
+        l2_loss = torch.nn.MSELoss()
+        reg_factor = 1e-3
+        return l1_loss(inputs, outputs) + l2_loss(inputs, outputs) + reg_factor * torch.norm(content_embedding) ** 2

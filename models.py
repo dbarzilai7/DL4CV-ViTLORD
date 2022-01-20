@@ -17,10 +17,10 @@ class GeneratorBasic(nn.Module):
     code_dim is the number of units in code (it's a 1-dimensional vector)
     taken from here    https://github.com/tneumann/minimal_glo/blob/master/glo.py
     """
-    def __init__(self, code_dim, out_channels=1):
+    def __init__(self,     content_dim, adain_layers, adain_dim, img_shape):
         super(GeneratorBasic, self).__init__()
         self.net = nn.Sequential(
-            nn.Linear(code_dim, 84), nn.ReLU(True),
+            nn.Linear(content_dim + adain_dim, 84), nn.ReLU(True),
             nn.Linear(84, 120), nn.ReLU(True),
             nn.Linear(120, 16*5*5), nn.ReLU(True),
             View(shape=(-1, 16, 5, 5)),
@@ -28,7 +28,7 @@ class GeneratorBasic(nn.Module):
             nn.ConvTranspose2d(16, 16, 5),
             nn.BatchNorm2d(16), nn.ReLU(True),
             torch.nn.Upsample(scale_factor=2),
-            nn.ConvTranspose2d(16, out_channels, 5, padding=2),
+            nn.ConvTranspose2d(16, img_shape[1], 5, padding=2),
             nn.Sigmoid(),
         )
 
@@ -73,10 +73,9 @@ class GeneratorVitLord(nn.Module):
             torch.nn.Conv2d(adain_dim, 64, kernel_size=5, padding=2),
             nn.LeakyReLU(),
             torch.nn.Conv2d(64, c, kernel_size=7, padding=3),
-            nn.Sigmoid()
+            nn.Sigmoid(), 
         )
 
     def forward(self, code):
         return self.net(code)
-
 
