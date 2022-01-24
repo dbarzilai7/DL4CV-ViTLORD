@@ -23,53 +23,33 @@ class LossG(torch.nn.Module):
 
         self.lambdas = dict(
             content_embedding_reg = cfg['content_embedding_reg'],
-            lambda_global_cls=cfg['lambda_global_cls'],
-            lambda_global_ssim=0,
-            lambda_entire_ssim=0,
-            lambda_entire_cls=0,
-            lambda_global_identity=0
+            lambda_cls=cfg['lambda_global_cls'],
+            lambda_ssim=cfg['lambda_global_ssim'],
+            lambda_identity=cfg['lambda_global_identity']
         )
 
-    def update_lambda_config(self, step):
-        if step == self.cfg['cls_warmup']:
-            self.lambdas['lambda_global_ssim'] = self.cfg['lambda_global_ssim']
-            self.lambdas['lambda_global_identity'] = self.cfg['lambda_global_identity']
-
-        if step % self.cfg['entire_A_every'] == 0:
-            self.lambdas['lambda_entire_ssim'] = self.cfg['lambda_entire_ssim']
-            self.lambdas['lambda_entire_cls'] = self.cfg['lambda_entire_cls']
-        else:
-            self.lambdas['lambda_entire_ssim'] = 0
-            self.lambdas['lambda_entire_cls'] = 0
-
     def forward(self, outputs, inputs, content_embedding):
-#         self.update_lambda_config(inputs['step'])
-#         losses = {}
-#         loss_G = 0
+        # self.update_lambda_config(inputs['step'])
+        losses = {}
+        loss_G = 0
 
-#         if self.lambdas['lambda_global_ssim'] > 0:
-#             losses['loss_global_ssim'] = self.calculate_global_ssim_loss(outputs['x_global'], inputs['A_global'])
-#             loss_G += losses['loss_global_ssim'] * self.lambdas['lambda_global_ssim']
+        if self.lambdas['lambda_ssim'] > 0:
+            losses['lambda_ssim'] = self.calculate_global_ssim_loss(outputs, inputs)
+            loss_G += losses['lambda_ssim'] * self.lambdas['lambda_ssim']
 
-#         if self.lambdas['lambda_entire_ssim'] > 0:
-#             losses['loss_entire_ssim'] = self.calculate_global_ssim_loss(outputs['x_entire'], inputs['A'])
-#             loss_G += losses['loss_entire_ssim'] * self.lambdas['lambda_entire_ssim']
+        if self.lambdas['lambda_cls'] > 0:
+            losses['lambda_cls'] = self.calculate_crop_cls_loss(outputs, inputs)
+            loss_G += losses['lambda_cls'] * self.lambdas['lambda_cls']
 
-#         if self.lambdas['lambda_entire_cls'] > 0:
-#             losses['loss_entire_cls'] = self.calculate_crop_cls_loss(outputs['x_entire'], inputs['B_global'])
-#             loss_G += losses['loss_entire_cls'] * self.lambdas['lambda_entire_cls']
-
-#         if self.lambdas['lambda_global_cls'] > 0:
-#             losses['loss_global_cls'] = self.calculate_crop_cls_loss(outputs['x_global'], inputs['B_global'])
-#             loss_G += losses['loss_global_cls'] * self.lambdas['lambda_global_cls']
-
-#         if self.lambdas['lambda_global_identity'] > 0:
-#             losses['loss_global_id_B'] = self.calculate_global_id_loss(outputs['y_global'], inputs['B_global'])
-#             loss_G += losses['loss_global_id_B'] * self.lambdas['lambda_global_identity']
-
-#         losses['loss'] = loss_G
-#         return losses
-        return self.calculate_crop_cls_loss(outputs, inputs) + self.calculate_global_ssim_loss(outputs, inputs) + self.calculate_global_id_loss(outputs, inputs) + self.lambdas['content_embedding_reg'] * torch.norm(content_embedding) ** 2
+        if self.lambdas['lambda_identity'] > 0:
+            losses['lambda_identity'] = self.calculate_global_id_loss(outputs, inputs)
+            loss_G += losses['lambda_identity'] * self.lambdas['lambda_identity']
+        
+        if self.lambdas['content_embedding_reg'] > 0:
+            loss_G += self.lambdas['content_embedding_reg'] * torch.norm(content_embedding) ** 2
+          
+        losses['loss'] = loss_G
+        return losses
 
     def calculate_global_ssim_loss(self, outputs, inputs):
         loss = 0.0
@@ -112,4 +92,4 @@ class NaiveLoss(torch.nn.Module):
         l1_loss = torch.nn.L1Loss(reduction='mean')
         l2_loss = torch.nn.MSELoss()
         reg_factor = 1e-3
-        return l1_loss(inputs, outputs) + l2_loss(inputs, outputs) + reg_factor * torch.norm(content_embedding) ** 2
+        return {'loss': l1_loss(inputs, outputs) + l2_loss(inputs, outputs) + reg_factor * torch.norm(content_embedding) ** 2}
