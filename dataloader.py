@@ -25,6 +25,6 @@ def load_datasets(name, max_images_to_use, batch_size):
 
   len_dataset = len(dataset.data)
   max_images_to_use = min(max_images_to_use, len_dataset)
-  used_indices = np.random.randint(0, len(dataset.data), len_dataset)
+  used_indices = np.random.randint(0, len_dataset, max_images_to_use)
   subsample = torch.utils.data.Subset(dataset, used_indices)
   return torch.utils.data.DataLoader(subsample, batch_size=batch_size, shuffle=True)
