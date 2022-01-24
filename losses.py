@@ -5,7 +5,7 @@ import torch.nn.functional as F
 
 from extractor import VitExtractor
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
 class LossG(torch.nn.Module):
@@ -14,15 +14,16 @@ class LossG(torch.nn.Module):
         super().__init__()
 
         self.cfg = cfg
-        self.extractor = VitExtractor(model_name=cfg['dino_model_name'], device=device)
+        self.extractor = VitExtractor(model_name=cfg['dino_model_name'], device=DEVICE)
 
         imagenet_norm = transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
         global_resize_transform = Resize(cfg['dino_global_patch_size'], max_size=480)
 
-        self.global_transform = transforms.Compose([global_resize_transform])
+        self.global_transform = transforms.Compose([global_resize_transform, imagenet_norm])
 
         self.lambdas = dict(
             content_embedding_reg = cfg['content_embedding_reg'],
+            lambda_l2 = cfg['lambda_l2'],
             lambda_cls=cfg['lambda_global_cls'],
             lambda_ssim=cfg['lambda_global_ssim'],
             lambda_identity=cfg['lambda_global_identity']
@@ -45,6 +46,10 @@ class LossG(torch.nn.Module):
             losses['lambda_identity'] = self.calculate_global_id_loss(outputs, inputs)
             loss_G += losses['lambda_identity'] * self.lambdas['lambda_identity']
         
+        if self.lambdas['lambda_l2'] > 0:
+            losses['lambda_l2'] = torch.nn.functional.mse_loss(inputs, outputs)
+            loss_G += losses['lambda_l2'] * self.lambdas['lambda_l2']
+        
         if self.lambdas['content_embedding_reg'] > 0:
             loss_G += self.lambdas['content_embedding_reg'] * torch.norm(content_embedding) ** 2
           
@@ -65,8 +70,8 @@ class LossG(torch.nn.Module):
     def calculate_crop_cls_loss(self, outputs, inputs):
         loss = 0.0
         for a, b in zip(outputs, inputs):  # avoid memory limitations
-            a = self.global_transform(a).unsqueeze(0).to(device)
-            b = self.global_transform(b).unsqueeze(0).to(device)
+            a = self.global_transform(a).unsqueeze(0).to(DEVICE)
+            b = self.global_transform(b).unsqueeze(0).to(DEVICE)
             cls_token = self.extractor.get_feature_from_input(a)[-1][0, 0, :]
             with torch.no_grad():
                 target_cls_token = self.extractor.get_feature_from_input(b)[-1][0, 0, :]
@@ -93,3 +98,12 @@ class NaiveLoss(torch.nn.Module):
         l2_loss = torch.nn.MSELoss()
         reg_factor = 1e-3
         return {'loss': l1_loss(inputs, outputs) + l2_loss(inputs, outputs) + reg_factor * torch.norm(content_embedding) ** 2}
+
+def get_criterion(name, cfg):
+  if name == "Naive":
+    return NaiveLoss(cfg)
+  elif name == "ViT":
+    return LossG(cfg)
+  else:
+    print("Loss not found")
+    raise NotImplementedError
