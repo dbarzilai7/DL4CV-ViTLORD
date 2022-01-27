@@ -45,9 +45,9 @@ def train_model(model, tboard_name, loss_func, train_loader, device, cfg):
     num_classes = len(np.unique(train_loader.dataset.dataset.targets))
     class_codes = torch.normal(0.5, noise_std, (num_classes, num_classes)).to(device)
     targets = np.unique(train_loader.dataset.dataset.targets)
-
-    mapping_dict = {}
-    mp = {k: i for i, k in enumerate(targets)}
+    class_mapping = np.arange(np.amax(targets) + 1)
+    for i, t in enumerate(targets):
+        class_mapping[t] = i
 
     content_codes = torch.normal(0.5, noise_std, (dataset_size, CONTENT_CODE_LEN)).to(device)
     
@@ -83,11 +83,8 @@ def train_model(model, tboard_name, loss_func, train_loader, device, cfg):
             images, labels, indices = data_row
             images = images.to(device)
 
-            new_class_codes = copy(class_codes)
-            for k, v in mp.items(): new_class_codes[class_codes == k] = v
-
             # create input for network
-            cur_content, cur_class = content_codes[indices.to(torch.long)], new_class_codes[mp[labels.to(torch.long)]]
+            cur_content, cur_class = content_codes[indices.to(torch.long)], class_codes[class_mapping[labels.to(torch.long)]]
             cur_content.requires_grad_(True)
             cur_class.requires_grad_(True)
             noise = torch.randn(CONTENT_CODE_LEN, device=device) * noise_std
