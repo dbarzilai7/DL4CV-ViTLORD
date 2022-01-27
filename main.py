@@ -12,11 +12,11 @@ import random
 import pandas as pd
 from dataloader import *
 from datetime import datetime
-
+import sys
 from matplotlib import pyplot as plt
 
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-CONF_PATH = "./conf.yaml"
+CONF_PATH = sys.argv[1]#"./conf.yaml"
 IMAGES_TO_USE = 1600
 CONTENT_CODE_LEN = 28
 
@@ -119,6 +119,7 @@ def train_model(model, tboard_name, loss_func, train_loader, device, cfg):
     writer.close()
 
 if __name__ == "__main__":
+  print("STARTING")
   cfg = load_conf()
   dataset_name, criterion_name, batch_size = cfg['dataset'], cfg['criterion'], cfg['batch_size']
 
