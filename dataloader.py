@@ -4,8 +4,14 @@ from torchvision import transforms, datasets
 import numpy as np
 
 MNIST_PATH = "./datasets/MNIST/"
+LFW_PATH = "./datasets/LFW/"
 
 class MNISTIndexed(torchvision.datasets.MNIST):
+    def __getitem__(self, idx):
+        data, target = super().__getitem__(idx)
+        return data, target, idx
+
+class LFWIndexed(torchvision.datasets.LFWPeople):
     def __getitem__(self, idx):
         data, target = super().__getitem__(idx)
         return data, target, idx
@@ -17,14 +23,33 @@ def load_mnist():
   # Download and load the data
   return MNISTIndexed(MNIST_PATH, download=True, train=True, transform=transform)
 
+def load_LFW():
+  transform = transforms.Compose([transforms.PILToTensor(), 
+                                transforms.ConvertImageDtype(torch.float),
+                                transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))])
+
+  dataset = LFWIndexed(LFW_PATH, download=True, split='train', transform=transform)  
+
+  labels_counts = np.unique(dataset.targets, return_counts=True)
+  most_prominent = labels_counts[1].argsort()[-20:]
+  labels = labels_counts[0][most_prominent]
+  good_indices = np.isin(dataset.targets, labels)
+  dataset.data = list(np.array(dataset.data)[good_indices])
+  dataset.targets = list(np.array(dataset.targets)[good_indices])
+
+  return dataset
+
+
 def load_datasets(name, max_images_to_use, batch_size):
   if name == "MNIST":
     dataset = load_mnist()
+  elif name == "LFW":
+    dataset = load_LFW()
   else:
     print("Dataset not supported")
 
   len_dataset = len(dataset.data)
   max_images_to_use = min(max_images_to_use, len_dataset)
-  used_indices = np.random.randint(0, len_dataset, max_images_to_use)
+  used_indices = np.random.randint(0, len(dataset.data), len_dataset)
   subsample = torch.utils.data.Subset(dataset, used_indices)
   return torch.utils.data.DataLoader(subsample, batch_size=batch_size, shuffle=True)

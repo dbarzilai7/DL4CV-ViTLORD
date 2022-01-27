@@ -41,13 +41,14 @@ def train_model(model, tboard_name, loss_func, train_loader, device, cfg):
  
     # prepare the data
     dataset_size = len(train_loader.dataset.dataset.data)
-    num_classes = len(train_loader.dataset.dataset.classes)
+    num_classes = len(np.unique(train_loader.dataset.dataset.targets))
     class_codes = torch.normal(0.5, noise_std, (num_classes, num_classes)).to(device)
     content_codes = torch.normal(0.5, noise_std, (dataset_size, CONTENT_CODE_LEN)).to(device)
     
     # set up some variables for the visualizations
     display_contents = train_loader.dataset.indices[:4]
-    display_classes = [0, 1, 2, 3]
+    labels_counts = np.unique(train_loader.dataset.dataset.targets, return_counts=True)
+    display_classes = labels_counts[0][labels_counts[1].argsort()[-4:]]
 
     # prepare model
     model = model.to(device)
@@ -123,7 +124,7 @@ if __name__ == "__main__":
 
   dataloader = load_datasets(dataset_name, IMAGES_TO_USE, batch_size)
   c, h, w = dataloader.dataset.dataset[0][0].shape
-  num_classes = len(dataloader.dataset.dataset.classes)
+  num_classes = len(np.unique(dataloader.dataset.dataset.targets))
 
   criterion = get_criterion(criterion_name, cfg)
 
