@@ -3,6 +3,7 @@ from torchvision import transforms, datasets
 import models
 from torch import optim
 import torch
+from numpy import copy
 from torch.utils.tensorboard import SummaryWriter
 from torch.distributions.multivariate_normal import MultivariateNormal
 import numpy as np
@@ -43,6 +44,11 @@ def train_model(model, tboard_name, loss_func, train_loader, device, cfg):
     dataset_size = len(train_loader.dataset.dataset.data)
     num_classes = len(np.unique(train_loader.dataset.dataset.targets))
     class_codes = torch.normal(0.5, noise_std, (num_classes, num_classes)).to(device)
+    targets = np.unique(train_loader.dataset.dataset.targets)
+
+    mapping_dict = {}
+    mp = {k: i for i, k in enumerate(targets)}
+
     content_codes = torch.normal(0.5, noise_std, (dataset_size, CONTENT_CODE_LEN)).to(device)
     
     # set up some variables for the visualizations
@@ -58,14 +64,14 @@ def train_model(model, tboard_name, loss_func, train_loader, device, cfg):
     c, h, w = sample_content_images[0].shape
     labels = list(train_loader.dataset.dataset.targets)
     sample_class_indices = [labels.index(i) for i in display_classes]
-    samples_classes_ims = [train_loader.dataset.dataset[i][0] for i in sample_class_indices]
-    tboard_classses = torch.cat([torch.zeros(1, h, w)] + samples_classes_ims).unsqueeze(1).to(device)
-    tboard_contents = torch.cat([train_loader.dataset.dataset[i][0] for i in display_contents]).unsqueeze(1).to(device)
-    
-    tboard_batch = torch.zeros(((len(display_classes) + 1) * (len(display_contents) + 1), 1, h, w), device=device)
+    samples_classes_ims = [train_loader.dataset.dataset[i][0].unsqueeze(0) for i in sample_class_indices]
+    tboard_classes = torch.cat([torch.zeros(1,c, h, w)] + samples_classes_ims).to(device)
+    tboard_contents = torch.cat([train_loader.dataset.dataset[i][0].unsqueeze(0) for i in display_contents]).to(device)
+
+    tboard_batch = torch.zeros(((len(display_classes) + 1) * (len(display_contents) + 1), c, h, w), device=device)
     non_first_col = np.arange(tboard_batch.shape[0])
     non_first_col = non_first_col[non_first_col % (len(display_contents) + 1) != 0]
-    tboard_batch[:tboard_batch.shape[0]:len(display_classes)+1, ...] = tboard_classses
+    tboard_batch[:tboard_batch.shape[0]:len(display_classes)+1, ...] = tboard_classes
     
     # start of train
     for epoch in range(epochs):
@@ -77,8 +83,11 @@ def train_model(model, tboard_name, loss_func, train_loader, device, cfg):
             images, labels, indices = data_row
             images = images.to(device)
 
+            new_class_codes = copy(class_codes)
+            for k, v in mp.items(): new_class_codes[class_codes == k] = v
+
             # create input for network
-            cur_content, cur_class = content_codes[indices], class_codes[labels]
+            cur_content, cur_class = content_codes[indices.to(torch.long)], new_class_codes[mp[labels.to(torch.long)]]
             cur_content.requires_grad_(True)
             cur_class.requires_grad_(True)
             noise = torch.randn(CONTENT_CODE_LEN, device=device) * noise_std
@@ -131,6 +140,6 @@ if __name__ == "__main__":
 
   model = models.GeneratorBasic(CONTENT_CODE_LEN, 4, num_classes, (batch_size, c, h, w ))
 
-  log_name = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+  log_name = datetime.now().strftime("%d-%m-%Y-%H-%M-%S")
   train_model(model, log_name, criterion, dataloader, DEVICE, cfg)
 

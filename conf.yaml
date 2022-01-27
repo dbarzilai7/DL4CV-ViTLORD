@@ -1,6 +1,6 @@
 seed: 42
 
-dataset: MNIST
+dataset: LFW
 criterion: Naive
 generator: Basic
 
