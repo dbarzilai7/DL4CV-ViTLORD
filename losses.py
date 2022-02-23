@@ -2,7 +2,7 @@ from torchvision.transforms import Resize
 from torchvision import transforms
 import torch
 import torch.nn.functional as F
-
+import torchvision
 from extractor import VitExtractor
 
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -22,8 +22,8 @@ class LossG(torch.nn.Module):
         self.global_transform = transforms.Compose([global_resize_transform, imagenet_norm])
 
         self.lambdas = dict(
-            content_embedding_reg = cfg['content_embedding_reg'],
-            lambda_l2 = cfg['lambda_l2'],
+            content_embedding_reg=cfg['content_embedding_reg'],
+            lambda_l2=cfg['lambda_l2'],
             lambda_cls=cfg['lambda_global_cls'],
             lambda_ssim=cfg['lambda_global_ssim'],
             lambda_identity=cfg['lambda_global_identity']
@@ -45,14 +45,15 @@ class LossG(torch.nn.Module):
         if self.lambdas['lambda_identity'] > 0:
             losses['lambda_identity'] = self.calculate_global_id_loss(outputs, inputs)
             loss_G += losses['lambda_identity'] * self.lambdas['lambda_identity']
-        
+
         if self.lambdas['lambda_l2'] > 0:
             losses['lambda_l2'] = torch.nn.functional.mse_loss(inputs, outputs)
             loss_G += losses['lambda_l2'] * self.lambdas['lambda_l2']
-        
+
         if self.lambdas['content_embedding_reg'] > 0:
             loss_G += self.lambdas['content_embedding_reg'] * torch.norm(content_embedding) ** 2
-          
+            # torch.sum(out['content_code'] ** 2, dim=1).mean()
+
         losses['loss'] = loss_G
         return losses
 
@@ -89,21 +90,71 @@ class LossG(torch.nn.Module):
             loss += F.mse_loss(keys_a, keys_b)
         return loss
 
+
 class NaiveLoss(torch.nn.Module):
     def __init__(self, cfg):
         super().__init__()
-        
+
     def forward(self, outputs, inputs, content_embedding):
         l1_loss = torch.nn.L1Loss(reduction='mean')
         l2_loss = torch.nn.MSELoss()
         reg_factor = 1e-3
-        return {'loss': l1_loss(inputs, outputs) + l2_loss(inputs, outputs) + reg_factor * torch.norm(content_embedding) ** 2}
+        return {'loss': l1_loss(inputs, outputs) + l2_loss(inputs, outputs) + reg_factor * torch.norm(
+            content_embedding) ** 2}
+
+
+class NetVGGFeatures(torch.nn.Module):
+
+    def __init__(self, layer_ids):
+        super().__init__()
+
+        self.vggnet = torchvision.models.vgg16(pretrained=True)
+        self.layer_ids = layer_ids
+
+    def forward(self, x):
+        output = []
+        for i in range(self.layer_ids[-1] + 1):
+            x = self.vggnet.features[i](x)
+
+            if i in self.layer_ids:
+                output.append(x)
+
+        return output
+
+
+class VGGDistance(torch.nn.Module):
+
+    def __init__(self, cfg):
+        super().__init__()
+        self.layer_ids = [2, 7, 12, 21, 30]
+        self.vgg = NetVGGFeatures(self.layer_ids)
+        self.cfg = cfg
+
+    def forward(self, outputs, images, content_embedding):
+        I1 = outputs
+        I2 = images
+
+        b_sz = I1.size(0)
+        f1 = self.vgg(I1)
+        f2 = self.vgg(I2)
+
+        loss = torch.abs(I1 - I2).view(b_sz, -1).mean(1)
+
+        for i in range(len(self.layer_ids)):
+            layer_loss = torch.abs(f1[i] - f2[i]).view(b_sz, -1).mean(1)
+            loss = loss + layer_loss
+
+        content_penalty = torch.norm(content_embedding) ** 2
+        return {'loss': self.cfg['lambda_VGG'] * loss.mean() + self.cfg['content_decay'] * content_penalty}
+
 
 def get_criterion(name, cfg):
-  if name == "Naive":
-    return NaiveLoss(cfg)
-  elif name == "ViT":
-    return LossG(cfg)
-  else:
-    print("Loss not found")
-    raise NotImplementedError
+    if name == "Naive":
+        return NaiveLoss(cfg)
+    elif name == "ViT":
+        return LossG(cfg)
+    elif name == "VGG":
+        return VGGDistance(cfg)
+    else:
+        print("Loss not found")
+        raise NotImplementedError
