@@ -118,35 +118,31 @@ def train_model(model, tboard_name, loss_func, train_loader, device, cfg):
         inputs = []
         input_classes = []
         input_contents = []
-        if isinstance(model, models.GeneratorDone):
-            display_classes_norm = [(labels_counts[0].tolist()).index(cls) for cls in display_classes]
-            for disp_classes in display_classes_norm:
-                for disp_contents in display_contents:
-                    input_contents.append(content_codes[disp_contents].unsqueeze(0))
-                    input_classes.append((class_codes[disp_classes].unsqueeze(0)))
-            outputs = model(torch.cat(input_contents, 0), torch.cat(input_classes))
-            tboard_batch[non_first_col, ...] = torch.cat((tboard_contents, outputs))
+        with torch.no_grad():
+            if isinstance(model, models.GeneratorDone):
+                display_classes_norm = [(labels_counts[0].tolist()).index(cls) for cls in display_classes]
+                for disp_classes in display_classes_norm:
+                    for disp_contents in display_contents:
+                        input_contents.append(content_codes[disp_contents].unsqueeze(0))
+                        input_classes.append((class_codes[disp_classes].unsqueeze(0)))
+                outputs = model(torch.cat(input_contents, 0), torch.cat(input_classes))
+                tboard_batch[non_first_col, ...] = torch.cat((tboard_contents, outputs))
 
-        else:
-            for disp_classes in display_classes:
-                for disp_contents in display_contents:
-                    inputs.append(torch.cat((class_codes[disp_classes], content_codes[disp_contents])).unsqueeze(0))
-            outputs = model(torch.cat(inputs, 0))
-            tboard_batch[non_first_col, ...] = torch.cat((tboard_contents, outputs))
+            else:
+                for disp_classes in display_classes:
+                    for disp_contents in display_contents:
+                        inputs.append(torch.cat((class_codes[disp_classes], content_codes[disp_contents])).unsqueeze(0))
+                outputs = model(torch.cat(inputs, 0))
+                tboard_batch[non_first_col, ...] = torch.cat((tboard_contents, outputs))
 
-        img_grid = torchvision.utils.make_grid(tboard_batch, nrow=len(display_classes) + 1)
-        writer.add_image('images', img_grid, global_step=epoch)
+            img_grid = torchvision.utils.make_grid(tboard_batch, nrow=len(display_classes) + 1)
+            writer.add_image('images', img_grid, global_step=epoch)
 
-        # outputs = model(content_codes[0], class_codes[0])
-
-        # img_grid = torchvision.utils.make_grid(outputs, nrow=1)
-        # writer.add_image('images', img_grid, global_step=epoch)
-
-        losses_means = pd.DataFrame(all_losses).mean(axis=0)
-        for index, value in losses_means.items():
-            writer.add_scalar(index, value, global_step=epoch)
-        writer.flush()
-        print("Epoch: {}, loss: {}\n".format(epoch, losses_means.loc['loss']))
+            losses_means = pd.DataFrame(all_losses).mean(axis=0)
+            for index, value in losses_means.items():
+                writer.add_scalar(index, value, global_step=epoch)
+            writer.flush()
+            print("Epoch: {}, loss: {}\n".format(epoch, losses_means.loc['loss']))
 
     writer.add_hparams(cfg, {'hparam/' + index: value for index, value in losses_means.items()})
 
