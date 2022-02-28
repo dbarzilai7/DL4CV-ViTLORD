@@ -76,3 +76,23 @@ class UnNormalize(object):
             t.mul_(s).add_(m)
             # The normalize code -> t.sub_(m).div_(s)
         return tensor
+
+
+class Normalize(object):
+    def __init__(self, mean, std):
+        self.mean = mean
+        self.std = std
+
+    def __call__(self, tensor):
+        """
+        Args:
+            tensor (Tensor): Tensor image of size (C, H, W) to be normalized.
+        Returns:
+            Tensor: Normalized image.
+        """
+        normalizedTensor = torch.zeros_like(tensor)
+        normalizedTensor[0] = (tensor[0] - self.mean[0]) / (self.std[0])
+        normalizedTensor[1] = (tensor[1] - self.mean[1]) / (self.std[1])
+        normalizedTensor[2] = (tensor[2] - self.mean[2]) / (self.std[2])
+
+        return normalizedTensor

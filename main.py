@@ -14,6 +14,8 @@ import pandas as pd
 from dataloader import *
 from datetime import datetime
 import sys
+from torch.optim.lr_scheduler import CosineAnnealingLR
+
 from matplotlib import pyplot as plt
 
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -42,8 +44,13 @@ def train_model(model, tboard_name, loss_func, train_loader, device, cfg):
 
     epochs, lr, noise_std = cfg['epochs'], cfg['lr'], cfg['noise_std']
     optimizer = optim.Adam(model.parameters(), lr=lr)
+    scheduler = CosineAnnealingLR(
+        optimizer,
+        T_max=cfg['epochs'] * len(train_loader),
+        eta_min=cfg['min_lr']
+    )
     unorm = UnNormalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225))
-
+    norm = Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225))
     # prepare the data
     dataset_size = train_loader.dataset.indices.size
     num_classes = len(np.unique(train_loader.dataset.dataset.targets))
@@ -71,7 +78,8 @@ def train_model(model, tboard_name, loss_func, train_loader, device, cfg):
     sample_class_indices = [labels.index(i) for i in display_classes]
     samples_classes_ims = [unorm(train_loader.dataset.dataset[i][0]).unsqueeze(0) for i in sample_class_indices]
     tboard_classes = torch.cat([torch.zeros(1, c, h, w)] + samples_classes_ims).to(device)
-    tboard_contents = torch.cat([unorm(train_loader.dataset.dataset[i][0]).unsqueeze(0) for i in display_contents]).to(device)
+    tboard_contents = torch.cat([unorm(train_loader.dataset.dataset[i][0]).unsqueeze(0) for i in display_contents]).to(
+        device)
 
     tboard_batch = torch.zeros(((len(display_classes) + 1) * (len(display_contents) + 1), c, h, w), device=device)
     non_first_col = np.arange(tboard_batch.shape[0])
@@ -102,7 +110,7 @@ def train_model(model, tboard_name, loss_func, train_loader, device, cfg):
             # forward + backward + optimize
             if isinstance(model, models.GeneratorDone):
                 outputs = model(cur_content + noise, cur_class)
-                losses = loss_func(outputs, images, cur_content)
+                losses = loss_func(outputs, images, cur_content, epoch)
             else:
                 outputs = model(inputs)
                 losses = loss_func(torch.cat([outputs, outputs, outputs], dim=1),
@@ -110,7 +118,7 @@ def train_model(model, tboard_name, loss_func, train_loader, device, cfg):
 
             losses['loss'].backward()
             optimizer.step()
-
+            # scheduler.step()
             # statistics
             all_losses.append({key: float(value) for key, value in losses.items()})
 
@@ -127,7 +135,7 @@ def train_model(model, tboard_name, loss_func, train_loader, device, cfg):
                         input_classes.append((class_codes[disp_classes].unsqueeze(0)))
                 outputs = model(torch.cat(input_contents, 0), torch.cat(input_classes))
                 tboard_batch[non_first_col, ...] = torch.cat((tboard_contents, outputs))
-
+                tboard_batch[0, ...] = model(content_codes[1549].unsqueeze(0), class_codes[18].unsqueeze(0))
             else:
                 for disp_classes in display_classes:
                     for disp_contents in display_contents:

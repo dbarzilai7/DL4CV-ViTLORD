@@ -6,11 +6,12 @@ generator: Basic
 
 lambda_global_cls: 0
 lambda_global_ssim: 0
-lambda_global_identity: 1.0
+lambda_global_identity: 1
+lambda_l1: 0
 lambda_l2: 0
 content_embedding_reg: 0.0001
 
-lambda_VGG: 1
+lambda_VGG: 10
 content_decay: 0.0001
 
 dino_model_name: dino_vits8
@@ -18,6 +19,7 @@ dino_global_patch_size: 224
 upsample_mode: bilinear # ['nearest', 'bilinear']
 
 lr: 0.001
-epochs: 100
+min_lr: 0.0001
+epochs: 50
 noise_std: 0.3
 batch_size: 16

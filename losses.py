@@ -12,25 +12,35 @@ class LossG(torch.nn.Module):
 
     def __init__(self, cfg):
         super().__init__()
-
+        self.step = 1
         self.cfg = cfg
         self.extractor = VitExtractor(model_name=cfg['dino_model_name'], device=DEVICE)
 
         imagenet_norm = transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
-        global_resize_transform = Resize(cfg['dino_global_patch_size'], max_size=480)
+        self.global_resize_transform = Resize(cfg['dino_global_patch_size'], max_size=480)
 
-        self.global_transform = transforms.Compose([global_resize_transform, imagenet_norm])
+        self.global_transform = transforms.Compose([self.global_resize_transform, imagenet_norm])
 
         self.lambdas = dict(
             content_embedding_reg=cfg['content_embedding_reg'],
+            lambda_l1=cfg['lambda_l1'],
             lambda_l2=cfg['lambda_l2'],
             lambda_cls=cfg['lambda_global_cls'],
             lambda_ssim=cfg['lambda_global_ssim'],
             lambda_identity=cfg['lambda_global_identity']
         )
 
-    def forward(self, outputs, inputs, content_embedding):
-        # self.update_lambda_config(inputs['step'])
+    def update_lambda_config(self):
+        if self.step % 5 == 0:
+            self.lambdas['lambda_ssim'] = self.cfg['lambda_global_ssim']
+            self.lambdas['lambda_cls'] = self.cfg['lambda_global_cls']
+        else:
+            self.lambdas['lambda_ssim'] = 0
+            self.lambdas['lambda_cls'] = 0
+        self.step += 1
+
+    def forward(self, outputs, inputs, content_embedding, epoch=None):
+        # self.update_lambda_config()
         losses = {}
         loss_G = 0
 
@@ -46,13 +56,17 @@ class LossG(torch.nn.Module):
             losses['lambda_identity'] = self.calculate_global_id_loss(outputs, inputs)
             loss_G += losses['lambda_identity'] * self.lambdas['lambda_identity']
 
+        if self.lambdas['lambda_l1'] > 0:
+            losses['lambda_l1'] = torch.nn.functional.l1_loss(inputs, outputs)
+            loss_G += losses['lambda_l1'] * self.lambdas['lambda_l1']
+
         if self.lambdas['lambda_l2'] > 0:
             losses['lambda_l2'] = torch.nn.functional.mse_loss(inputs, outputs)
             loss_G += losses['lambda_l2'] * self.lambdas['lambda_l2']
 
         if self.lambdas['content_embedding_reg'] > 0:
             loss_G += self.lambdas['content_embedding_reg'] * torch.norm(content_embedding) ** 2
-            # torch.sum(out['content_code'] ** 2, dim=1).mean()
+            # loss_G = torch.sum(content_embedding ** 2, dim=1).mean()
 
         losses['loss'] = loss_G
         return losses
@@ -60,7 +74,7 @@ class LossG(torch.nn.Module):
     def calculate_global_ssim_loss(self, outputs, inputs):
         loss = 0.0
         for a, b in zip(inputs, outputs):  # avoid memory limitations
-            a = self.global_transform(a)
+            a = self.global_resize_transform(a)
             b = self.global_transform(b)
             with torch.no_grad():
                 target_keys_self_sim = self.extractor.get_keys_self_sim_from_input(a.unsqueeze(0), layer_num=11)
@@ -72,7 +86,7 @@ class LossG(torch.nn.Module):
         loss = 0.0
         for a, b in zip(outputs, inputs):  # avoid memory limitations
             a = self.global_transform(a).unsqueeze(0).to(DEVICE)
-            b = self.global_transform(b).unsqueeze(0).to(DEVICE)
+            b = self.global_resize_transform(b).unsqueeze(0).to(DEVICE)
             cls_token = self.extractor.get_feature_from_input(a)[-1][0, 0, :]
             with torch.no_grad():
                 target_cls_token = self.extractor.get_feature_from_input(b)[-1][0, 0, :]
@@ -82,7 +96,7 @@ class LossG(torch.nn.Module):
     def calculate_global_id_loss(self, outputs, inputs):
         loss = 0.0
         for a, b in zip(inputs, outputs):
-            a = self.global_transform(a)
+            a = self.global_resize_transform(a)
             b = self.global_transform(b)
             with torch.no_grad():
                 keys_a = self.extractor.get_keys_from_input(a.unsqueeze(0), 11)
@@ -95,7 +109,7 @@ class NaiveLoss(torch.nn.Module):
     def __init__(self, cfg):
         super().__init__()
 
-    def forward(self, outputs, inputs, content_embedding):
+    def forward(self, outputs, inputs, content_embedding, epoch=None):
         l1_loss = torch.nn.L1Loss(reduction='mean')
         l2_loss = torch.nn.MSELoss()
         reg_factor = 1e-3
@@ -130,8 +144,10 @@ class VGGDistance(torch.nn.Module):
         self.vgg = NetVGGFeatures(self.layer_ids)
         self.cfg = cfg
 
-    def forward(self, outputs, images, content_embedding):
-        I1 = outputs
+        self.imagenet_norm = transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
+
+    def forward(self, outputs, images, content_embedding, epoch):
+        I1 = self.imagenet_norm(outputs)
         I2 = images
 
         b_sz = I1.size(0)
@@ -148,6 +164,20 @@ class VGGDistance(torch.nn.Module):
         return {'loss': self.cfg['lambda_VGG'] * loss.mean() + self.cfg['content_decay'] * content_penalty}
 
 
+class ViTVGG(torch.nn.Module):
+    def __init__(self, cfg):
+        super().__init__()
+        self.vgg = VGGDistance(cfg)
+        self.vit = LossG(cfg)
+        self.cfg = cfg
+        self.warmup_epochs = 20
+
+    def forward(self, outputs, inputs, content_embedding, epoch=None):
+        if epoch < self.warmup_epochs:
+            return self.vgg.forward(outputs, inputs, content_embedding, epoch)
+        return self.vit.forward(outputs, inputs, content_embedding, epoch)
+
+
 def get_criterion(name, cfg):
     if name == "Naive":
         return NaiveLoss(cfg)
@@ -155,6 +185,8 @@ def get_criterion(name, cfg):
         return LossG(cfg)
     elif name == "VGG":
         return VGGDistance(cfg)
+    elif name == "ViTVGG":
+        return ViTVGG(cfg)
     else:
         print("Loss not found")
         raise NotImplementedError
