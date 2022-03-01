@@ -12,7 +12,6 @@ class LossG(torch.nn.Module):
 
     def __init__(self, cfg):
         super().__init__()
-        self.step = 1
         self.cfg = cfg
         self.extractor = VitExtractor(model_name=cfg['dino_model_name'], device=DEVICE)
 
@@ -30,17 +29,7 @@ class LossG(torch.nn.Module):
             lambda_identity=cfg['lambda_global_identity']
         )
 
-    def update_lambda_config(self):
-        if self.step % 5 == 0:
-            self.lambdas['lambda_ssim'] = self.cfg['lambda_global_ssim']
-            self.lambdas['lambda_cls'] = self.cfg['lambda_global_cls']
-        else:
-            self.lambdas['lambda_ssim'] = 0
-            self.lambdas['lambda_cls'] = 0
-        self.step += 1
-
     def forward(self, outputs, inputs, content_embedding, epoch=None):
-        # self.update_lambda_config()
         losses = {}
         loss_G = 0
 
@@ -66,7 +55,6 @@ class LossG(torch.nn.Module):
 
         if self.lambdas['content_embedding_reg'] > 0:
             loss_G += self.lambdas['content_embedding_reg'] * torch.norm(content_embedding) ** 2
-            # loss_G = torch.sum(content_embedding ** 2, dim=1).mean()
 
         losses['loss'] = loss_G
         return losses
@@ -80,7 +68,7 @@ class LossG(torch.nn.Module):
                 target_keys_self_sim = self.extractor.get_keys_self_sim_from_input(a.unsqueeze(0), layer_num=11)
             keys_ssim = self.extractor.get_keys_self_sim_from_input(b.unsqueeze(0), layer_num=11)
             loss += F.mse_loss(keys_ssim, target_keys_self_sim)
-        return loss
+        return loss/len(outputs)
 
     def calculate_crop_cls_loss(self, outputs, inputs):
         loss = 0.0
@@ -91,7 +79,7 @@ class LossG(torch.nn.Module):
             with torch.no_grad():
                 target_cls_token = self.extractor.get_feature_from_input(b)[-1][0, 0, :]
             loss += F.mse_loss(cls_token, target_cls_token)
-        return loss
+        return loss/len(outputs)
 
     def calculate_global_id_loss(self, outputs, inputs):
         loss = 0.0
@@ -102,7 +90,7 @@ class LossG(torch.nn.Module):
                 keys_a = self.extractor.get_keys_from_input(a.unsqueeze(0), 11)
             keys_b = self.extractor.get_keys_from_input(b.unsqueeze(0), 11)
             loss += F.mse_loss(keys_a, keys_b)
-        return loss
+        return loss/len(outputs)
 
 
 class NaiveLoss(torch.nn.Module):
@@ -146,7 +134,7 @@ class VGGDistance(torch.nn.Module):
 
         self.imagenet_norm = transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
 
-    def forward(self, outputs, images, content_embedding, epoch):
+    def forward(self, outputs, images, content_embedding, epoch=None):
         I1 = self.imagenet_norm(outputs)
         I2 = images
 

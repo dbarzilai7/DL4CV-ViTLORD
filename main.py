@@ -50,7 +50,6 @@ def train_model(model, tboard_name, loss_func, train_loader, device, cfg):
         eta_min=cfg['min_lr']
     )
     unorm = UnNormalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225))
-    norm = Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225))
     # prepare the data
     dataset_size = train_loader.dataset.indices.size
     num_classes = len(np.unique(train_loader.dataset.dataset.targets))

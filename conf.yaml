@@ -4,8 +4,8 @@ dataset: LFW
 criterion: ViT
 generator: Basic
 
-lambda_global_cls: 0
-lambda_global_ssim: 0
+lambda_global_cls: 10
+lambda_global_ssim: 1
 lambda_global_identity: 1
 lambda_l1: 0
 lambda_l2: 0
