@@ -87,6 +87,8 @@ def train_model(model, tboard_name, loss_func, train_loader, device, cfg):
 
     # start of train
     for epoch in range(epochs):
+        if cfg['swap_gen'] and epoch == cfg['warm_up_epochs']:
+            model = models.GeneratorDone(CONTENT_CODE_LEN, 4, num_classes, (batch_size, c, h, w))
         model.train()
 
         all_losses = []
@@ -101,7 +103,6 @@ def train_model(model, tboard_name, loss_func, train_loader, device, cfg):
             cur_content.requires_grad_(True)
             cur_class.requires_grad_(True)
             noise = torch.randn(CONTENT_CODE_LEN, device=device) * noise_std
-            inputs = torch.cat((cur_class, cur_content + noise), 1)
 
             # zero the parameter gradients
             optimizer.zero_grad()
@@ -111,13 +112,14 @@ def train_model(model, tboard_name, loss_func, train_loader, device, cfg):
                 outputs = model(cur_content + noise, cur_class)
                 losses = loss_func(outputs, images, cur_content, epoch)
             else:
+                inputs = torch.cat((cur_class, cur_content + noise), 1)
                 outputs = model(inputs)
                 losses = loss_func(torch.cat([outputs, outputs, outputs], dim=1),
                                    torch.cat([images, images, images], dim=1), cur_content)
 
             losses['loss'].backward()
             optimizer.step()
-            # scheduler.step()
+            scheduler.step()
             # statistics
             all_losses.append({key: float(value) for key, value in losses.items()})
 

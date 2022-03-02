@@ -158,7 +158,7 @@ class ViTVGG(torch.nn.Module):
         self.vgg = VGGDistance(cfg)
         self.vit = LossG(cfg)
         self.cfg = cfg
-        self.warmup_epochs = 20
+        self.warmup_epochs = cfg['warm_up_epochs']
 
     def forward(self, outputs, inputs, content_embedding, epoch=None):
         if epoch < self.warmup_epochs:

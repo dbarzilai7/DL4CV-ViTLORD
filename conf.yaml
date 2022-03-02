@@ -23,3 +23,6 @@ min_lr: 0.0001
 epochs: 50
 noise_std: 0.3
 batch_size: 16
+
+swap_gen: 1
+warm_up_epochs: 20
