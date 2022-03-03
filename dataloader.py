@@ -36,7 +36,7 @@ def load_LFW():
     dataset = LFWIndexed(LFW_PATH, download=True, split='train', transform=transform)
 
     labels_counts = np.unique(dataset.targets, return_counts=True)
-    most_prominent = labels_counts[1].argsort()[-20:]
+    most_prominent = labels_counts[1].argsort()[-10:-5]
     labels = labels_counts[0][most_prominent]
     good_indices = np.isin(dataset.targets, labels)
     dataset.data = list(np.array(dataset.data)[good_indices])

@@ -1,6 +1,6 @@
 import io
 
-import PIL
+from PIL import Image
 import numpy as np
 import pandas as pd
 import torch
@@ -15,7 +15,7 @@ from dataloader import UnNormalize
 
 class Evaluation:
     def __init__(self, train_loader, device, writer):
-        unorm = UnNormalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225))
+        self.unorm = UnNormalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225))
 
         # set up some variables for the visualizations
         self.display_contents = train_loader.dataset.indices[:4]
@@ -26,10 +26,10 @@ class Evaluation:
 
         labels = list(train_loader.dataset.dataset.targets)
         sample_class_indices = [labels.index(i) for i in self.display_classes]
-        samples_classes_ims = [unorm(train_loader.dataset.dataset[i][0]).unsqueeze(0) for i in sample_class_indices]
+        samples_classes_ims = [self.unorm(train_loader.dataset.dataset[i][0]).unsqueeze(0) for i in sample_class_indices]
         tboard_classes = torch.cat([torch.zeros(1, c, h, w)] + samples_classes_ims).to(device)
         self.tboard_contents = torch.cat(
-            [unorm(train_loader.dataset.dataset[i][0]).unsqueeze(0) for i in self.display_contents]).to(
+            [self.unorm(train_loader.dataset.dataset[i][0]).unsqueeze(0) for i in self.display_contents]).to(
             device)
 
         self.tboard_batch = torch.zeros(((len(self.display_classes) + 1) * (len(self.display_contents) + 1), c, h, w),
@@ -57,22 +57,21 @@ class Evaluation:
                         input_classes.append((class_codes[disp_classes].unsqueeze(0)))
                 outputs = model(torch.cat(input_contents, 0), torch.cat(input_classes))
                 self.tboard_batch[non_first_col, ...] = torch.cat((self.tboard_contents, outputs))
-                self.tboard_batch[0, ...] = model(content_codes[1549].unsqueeze(0), class_codes[18].unsqueeze(0))
+                #self.tboard_batch[0, ...] = model(content_codes[1549].unsqueeze(0), class_codes[18].unsqueeze(0))
 
                 img_grid = torchvision.utils.make_grid(self.tboard_batch, nrow=len(self.display_classes) + 1)
                 self.writer.add_image('images', img_grid, global_step=epoch)
 
                 tsne = TSNE(n_components=2, init='random')
                 for points, name in zip([content_codes, class_codes], ['content_codes', 'class_codes']):
-                    points_2d = tsne.fit_transform(points)
+                    points_2d = tsne.fit_transform(points.cpu())
                     plt.figure()
                     plt.scatter(points_2d[..., 1], points_2d[..., 0])
-                    buf = io.BytesIO()
-                    plt.savefig(buf, format='jpeg')
-                    image = PIL.Image.open(buf.seek(0))
-                    image = ToTensor()(image).unsqueeze(0)
+                    self.writer.add_image(name, self.plt_to_tensor(), global_step=epoch)
 
-                    self.writer.add_image(name, image, global_step=epoch)
+                    plt.figure()
+                    plt.hist(np.linalg.norm(points.cpu(), axis=1))
+                    self.writer.add_image(name + " hist", self.plt_to_tensor(), global_step=epoch)
 
 
             losses_means = pd.DataFrame(all_losses).mean(axis=0)
@@ -80,3 +79,11 @@ class Evaluation:
                 self.writer.add_scalar(index, value, global_step=epoch)
             self.writer.flush()
             print("Epoch: {}, loss: {}\n".format(epoch, losses_means.loc['loss']))
+
+    def plt_to_tensor(self):
+        buf = io.BytesIO()
+        plt.savefig(buf, format='jpeg')
+        buf.seek(0)
+
+        image = Image.open(buf)
+        return ToTensor()(image)

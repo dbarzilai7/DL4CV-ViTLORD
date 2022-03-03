@@ -117,17 +117,17 @@ class GeneratorDone(nn.Module):
         self.fc_layers = nn.Sequential(
             nn.Linear(
                 in_features=content_dim,
-                out_features=self.__initial_height * self.__initial_width * (adain_dim // 8)
-            ),
-
-            nn.LeakyReLU(),
-
-            nn.Linear(
-                in_features=self.__initial_height * self.__initial_width * (adain_dim // 8),
                 out_features=self.__initial_height * self.__initial_width * (adain_dim // 4)
             ),
 
             nn.LeakyReLU(),
+
+            # nn.Linear(
+            #     in_features=self.__initial_height * self.__initial_width * (adain_dim // 8),
+            #     out_features=self.__initial_height * self.__initial_width * (adain_dim // 4)
+            # ),
+            #
+            # nn.LeakyReLU(),
 
             nn.Linear(
                 in_features=self.__initial_height * self.__initial_width * (adain_dim // 4),

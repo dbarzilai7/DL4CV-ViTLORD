@@ -24,7 +24,7 @@ from matplotlib import pyplot as plt
 
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 CONF_PATH = sys.argv[1]  # "./conf.yaml"
-IMAGES_TO_USE = 1600
+IMAGES_TO_USE = 250
 CONTENT_CODE_LEN = 128
 CLASS_CODE_LEN = 256
 
@@ -115,7 +115,7 @@ def train_model(model, tboard_name, loss_func, train_loader, device, cfg):
             scheduler.step()
             # statistics
             all_losses.append({key: float(value) for key, value in losses.items()})
-            evaluator.eval(model, epoch, content_codes, class_codes, all_losses)
+        evaluator.eval(model, epoch, content_codes, class_codes, all_losses)
 
     writer.close()
 

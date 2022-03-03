@@ -148,7 +148,7 @@ class VGGDistance(torch.nn.Module):
             layer_loss = torch.abs(f1[i] - f2[i]).view(b_sz, -1).mean(1)
             loss = loss + layer_loss
 
-        content_penalty = torch.norm(content_embedding) ** 2
+        content_penalty = torch.sum(content_embedding ** 2, dim=1).mean()
         return {'loss': self.cfg['lambda_VGG'] * loss.mean() + self.cfg['content_decay'] * content_penalty}
 
 
