@@ -1,15 +1,15 @@
-seed: 42
+seed: 41
 
 dataset: LFW
-criterion: ViT
+criterion: Naive
 generator: Basic
 
 lambda_global_cls: 10
 lambda_global_ssim: 1
-lambda_global_identity: 1
+lambda_global_identity: 5
 lambda_l1: 0
 lambda_l2: 0
-content_embedding_reg: 0.0001
+content_embedding_reg: 0.001
 
 lambda_VGG: 10
 content_decay: 0.0001
@@ -18,11 +18,13 @@ dino_model_name: dino_vits8
 dino_global_patch_size: 224
 upsample_mode: bilinear # ['nearest', 'bilinear']
 
-lr: 0.001
-min_lr: 0.0001
-epochs: 50
-noise_std: 0.3
+lr_generator: 0.003
+lr_latent_codes: 0.0003
+
+min_lr: 0.00001
+epochs: 100
+noise_std: 1
 batch_size: 16
 
-swap_gen: 1
+swap_gen: 0
 warm_up_epochs: 20

@@ -1,3 +1,5 @@
+import itertools
+
 import torchvision
 from torchvision import transforms, datasets
 import models
@@ -7,6 +9,8 @@ from numpy import copy
 from torch.utils.tensorboard import SummaryWriter
 from torch.distributions.multivariate_normal import MultivariateNormal
 import numpy as np
+
+from evaluation import Evaluation
 from losses import *
 import yaml
 import random
@@ -42,53 +46,48 @@ def train_model(model, tboard_name, loss_func, train_loader, device, cfg):
     writer = SummaryWriter(log_dir='logs/' + tboard_name)
     writer.add_text('TrainConfig', str(cfg))
 
-    epochs, lr, noise_std = cfg['epochs'], cfg['lr'], cfg['noise_std']
-    optimizer = optim.Adam(model.parameters(), lr=lr)
-    scheduler = CosineAnnealingLR(
-        optimizer,
-        T_max=cfg['epochs'] * len(train_loader),
-        eta_min=cfg['min_lr']
-    )
-    unorm = UnNormalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225))
+    epochs, noise_std = cfg['epochs'], cfg['noise_std']
+
+    evaluator = Evaluation(train_loader,device, writer)
+
     # prepare the data
     dataset_size = train_loader.dataset.indices.size
     num_classes = len(np.unique(train_loader.dataset.dataset.targets))
     # class_codes = torch.normal(0.5, noise_std, (num_classes, CLASS_CODE_LEN)).to(device)
     class_codes = torch.FloatTensor(num_classes, CLASS_CODE_LEN).uniform_(-0.05, 0.05).to(device)
+    content_codes = torch.FloatTensor(dataset_size, CONTENT_CODE_LEN).uniform_(-0.05, 0.05).to(device)
+
     targets = np.unique(train_loader.dataset.dataset.targets)
     class_mapping = np.arange(np.amax(targets) + 1)
-    for i, t in enumerate(targets):
-        class_mapping[t] = i
+    class_mapping[targets] = np.arange(targets.size)
 
-    # content_codes = torch.normal(0.5, noise_std, (dataset_size, CONTENT_CODE_LEN)).to(device)
-    content_codes = torch.normal(0, noise_std, (dataset_size, CONTENT_CODE_LEN)).to(device)
-
-    # set up some variables for the visualizations
-    display_contents = train_loader.dataset.indices[:4]
-    labels_counts = np.unique(train_loader.dataset.dataset.targets, return_counts=True)
-    display_classes = labels_counts[0][labels_counts[1].argsort()[-4:]]
+    # optimizer = optim.Adam(model.parameters(), lr=lr)
+    optimizer = optim.Adam([
+        {
+            'params': model.parameters(),
+            'lr': cfg['lr_generator']
+        },
+        {
+            'params': itertools.chain(content_codes, class_codes),
+            'lr': cfg['lr_latent_codes']
+        }
+    ], betas=(0.5, 0.999))
+    scheduler = CosineAnnealingLR(
+        optimizer,
+        T_max=cfg['epochs'] * len(train_loader),
+        eta_min=cfg['min_lr']
+    )
     # prepare model
     model = model.to(device)
 
     # sets up some stuff for visualization
-    sample_content_images = [(train_loader.dataset.dataset[i][0]) for i in display_contents]
-    c, h, w = sample_content_images[0].shape
-    labels = list(train_loader.dataset.dataset.targets)
-    sample_class_indices = [labels.index(i) for i in display_classes]
-    samples_classes_ims = [unorm(train_loader.dataset.dataset[i][0]).unsqueeze(0) for i in sample_class_indices]
-    tboard_classes = torch.cat([torch.zeros(1, c, h, w)] + samples_classes_ims).to(device)
-    tboard_contents = torch.cat([unorm(train_loader.dataset.dataset[i][0]).unsqueeze(0) for i in display_contents]).to(
-        device)
-
-    tboard_batch = torch.zeros(((len(display_classes) + 1) * (len(display_contents) + 1), c, h, w), device=device)
-    non_first_col = np.arange(tboard_batch.shape[0])
-    non_first_col = non_first_col[non_first_col % (len(display_contents) + 1) != 0]
-    tboard_batch[:tboard_batch.shape[0]:len(display_classes) + 1, ...] = tboard_classes
+    c, h, w = train_loader.dataset.dataset[0][0].shape
 
     # start of train
     for epoch in range(epochs):
         if cfg['swap_gen'] and epoch == cfg['warm_up_epochs']:
-            model = models.GeneratorDone(CONTENT_CODE_LEN, 4, num_classes, (batch_size, c, h, w))
+            model = models.GeneratorDone(CONTENT_CODE_LEN, 4, num_classes, (cfg['batch_size'], c, h, w))
+            model = model.to(device)
         model.train()
 
         all_losses = []
@@ -108,52 +107,15 @@ def train_model(model, tboard_name, loss_func, train_loader, device, cfg):
             optimizer.zero_grad()
 
             # forward + backward + optimize
-            if isinstance(model, models.GeneratorDone):
-                outputs = model(cur_content + noise, cur_class)
-                losses = loss_func(outputs, images, cur_content, epoch)
-            else:
-                inputs = torch.cat((cur_class, cur_content + noise), 1)
-                outputs = model(inputs)
-                losses = loss_func(torch.cat([outputs, outputs, outputs], dim=1),
-                                   torch.cat([images, images, images], dim=1), cur_content)
+            outputs = model(cur_content + noise, cur_class)
+            losses = loss_func(outputs, images, cur_content, epoch)
 
             losses['loss'].backward()
             optimizer.step()
             scheduler.step()
             # statistics
             all_losses.append({key: float(value) for key, value in losses.items()})
-
-        model.eval()
-        inputs = []
-        input_classes = []
-        input_contents = []
-        with torch.no_grad():
-            if isinstance(model, models.GeneratorDone):
-                display_classes_norm = [(labels_counts[0].tolist()).index(cls) for cls in display_classes]
-                for disp_classes in display_classes_norm:
-                    for disp_contents in display_contents:
-                        input_contents.append(content_codes[disp_contents].unsqueeze(0))
-                        input_classes.append((class_codes[disp_classes].unsqueeze(0)))
-                outputs = model(torch.cat(input_contents, 0), torch.cat(input_classes))
-                tboard_batch[non_first_col, ...] = torch.cat((tboard_contents, outputs))
-                tboard_batch[0, ...] = model(content_codes[1549].unsqueeze(0), class_codes[18].unsqueeze(0))
-            else:
-                for disp_classes in display_classes:
-                    for disp_contents in display_contents:
-                        inputs.append(torch.cat((class_codes[disp_classes], content_codes[disp_contents])).unsqueeze(0))
-                outputs = model(torch.cat(inputs, 0))
-                tboard_batch[non_first_col, ...] = torch.cat((tboard_contents, outputs))
-
-            img_grid = torchvision.utils.make_grid(tboard_batch, nrow=len(display_classes) + 1)
-            writer.add_image('images', img_grid, global_step=epoch)
-
-            losses_means = pd.DataFrame(all_losses).mean(axis=0)
-            for index, value in losses_means.items():
-                writer.add_scalar(index, value, global_step=epoch)
-            writer.flush()
-            print("Epoch: {}, loss: {}\n".format(epoch, losses_means.loc['loss']))
-
-    writer.add_hparams(cfg, {'hparam/' + index: value for index, value in losses_means.items()})
+            evaluator.eval(model, epoch, content_codes, class_codes, all_losses)
 
     writer.close()
 
