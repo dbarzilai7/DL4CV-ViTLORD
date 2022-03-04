@@ -11,6 +11,8 @@ from torch.optim.lr_scheduler import CosineAnnealingLR
 import numpy as np
 from matplotlib import pyplot as plt
 
+CONF_PATH = sys.argv[1]  # "./conf.yaml"
+
 
 def train_model(model, tboard_name, loss_func, train_loader, device, cfg):
     writer = SummaryWriter(log_dir='logs/' + tboard_name)
@@ -82,7 +84,8 @@ def train_model(model, tboard_name, loss_func, train_loader, device, cfg):
 
 if __name__ == "__main__":
     print("STARTING")
-    cfg = load_conf()
+    cfg = load_conf(CONF_PATH)
+    set_seed(cfg['seed'])
     dataset_name, criterion_name, batch_size = cfg['dataset'], cfg['criterion'], cfg['batch_size']
 
     dataloader = load_datasets(dataset_name, cfg['max_images_to_use'], batch_size)
