@@ -1,3 +1,7 @@
+"""
+LARGELY TAKEN FROM https://github.com/avivga/lord-pytorch
+"""
+
 import torch
 import torch.nn.functional as F
 from torch import nn
@@ -6,15 +10,18 @@ from torchvision import models
 
 class LatentModel(nn.Module):
 
-	def __init__(self, config):
+	def __init__(self, cfg, n_imgs, n_classes, image_height, image_width, channels):
 		super().__init__()
 
-		self.config = config
+		self.image_shape = (image_height, image_width, channels)
+		self.cfg = cfg
 
-		self.content_embedding = RegularizedEmbedding(config['n_imgs'], config['content_dim'], config['content_std'])
-		self.class_embedding = nn.Embedding(config['n_classes'], config['class_dim'])
-		self.modulation = Modulation(config['class_dim'], config['n_adain_layers'], config['adain_dim'])
-		self.generator = Generator(config['content_dim'], config['n_adain_layers'], config['adain_dim'], config['img_shape'])
+		self.content_embedding = RegularizedEmbedding(n_imgs, cfg['content_dim'], cfg['noise_std'])
+		self.class_embedding = nn.Embedding(n_classes, cfg['class_dim'])
+		self.modulation = Modulation(cfg['class_dim'], cfg['n_adain_layers'], cfg['adain_dim'])
+
+		self.generator = Generator(cfg['content_dim'], cfg['n_adain_layers'], cfg['adain_dim'], self.image_shape)
+
 
 	def forward(self, img_id, class_id):
 		content_code = self.content_embedding(img_id)
@@ -31,6 +38,13 @@ class LatentModel(nn.Module):
 	def init(self):
 		self.apply(self.weights_init)
 
+	def reset_generator(self, device=None):
+		self.generator = Generator(self.cfg['content_dim'], self.cfg['n_adain_layers'], self.cfg['adain_dim'],
+								   self.image_shape)
+		LatentModel.weights_init(self.generator)
+		if device is not None:
+			self.generator = self.generator.to(device)
+
 	@staticmethod
 	def weights_init(m):
 		if isinstance(m, nn.Embedding):
@@ -39,15 +53,16 @@ class LatentModel(nn.Module):
 
 class AmortizedModel(nn.Module):
 
-	def __init__(self, config):
+	def __init__(self, cfg, image_height, image_width, channels):
 		super().__init__()
 
-		self.config = config
+		self.image_shape = (image_height, image_width, channels)
+		self.cfg = cfg
 
-		self.content_encoder = Encoder(config['img_shape'], config['content_dim'])
-		self.class_encoder = Encoder(config['img_shape'], config['class_dim'])
-		self.modulation = Modulation(config['class_dim'], config['n_adain_layers'], config['adain_dim'])
-		self.generator = Generator(config['content_dim'], config['n_adain_layers'], config['adain_dim'], config['img_shape'])
+		self.content_encoder = Encoder(self.image_shape, cfg['content_dim'])
+		self.class_encoder = Encoder(self.image_shape, cfg['class_dim'])
+		self.modulation = Modulation(cfg['class_dim'], cfg['n_adain_layers'], cfg['adain_dim'])
+		self.generator = Generator(cfg['content_dim'], cfg['n_adain_layers'], cfg['adain_dim'], self.image_shape)
 
 	def forward(self, img):
 		return self.convert(img, img)

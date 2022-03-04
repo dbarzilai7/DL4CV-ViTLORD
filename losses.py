@@ -1,11 +1,9 @@
 from torchvision.transforms import Resize
 from torchvision import transforms
-import torch
 import torch.nn.functional as F
 import torchvision
 from extractor import VitExtractor
-
-DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+from utils import *
 
 
 class LossG(torch.nn.Module):
@@ -15,13 +13,13 @@ class LossG(torch.nn.Module):
         self.cfg = cfg
         self.extractor = VitExtractor(model_name=cfg['dino_model_name'], device=DEVICE)
 
-        imagenet_norm = transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
+        imagenet_norm = transforms.Normalize(*IMAGENET_NORMALIZATION_VALS)
         self.global_resize_transform = Resize(cfg['dino_global_patch_size'], max_size=480)
 
         self.global_transform = transforms.Compose([self.global_resize_transform, imagenet_norm])
 
         self.lambdas = dict(
-            content_embedding_reg=cfg['content_embedding_reg'],
+            content_embedding_reg=cfg['content_reg_dino'],
             lambda_l1=cfg['lambda_l1'],
             lambda_l2=cfg['lambda_l2'],
             lambda_cls=cfg['lambda_global_cls'],
@@ -132,7 +130,7 @@ class VGGDistance(torch.nn.Module):
         self.vgg = NetVGGFeatures(self.layer_ids)
         self.cfg = cfg
 
-        self.imagenet_norm = transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
+        self.imagenet_norm = transforms.Normalize(*IMAGENET_NORMALIZATION_VALS)
 
     def forward(self, outputs, images, content_embedding, epoch=None):
         I1 = outputs
@@ -149,7 +147,7 @@ class VGGDistance(torch.nn.Module):
             loss = loss + layer_loss
 
         content_penalty = torch.sum(content_embedding ** 2, dim=1).mean()
-        return {'loss': self.cfg['lambda_VGG'] * loss.mean() + self.cfg['content_decay'] * content_penalty}
+        return {'loss': self.cfg['lambda_VGG'] * loss.mean() + self.cfg['content_reg_vgg'] * content_penalty}
 
 
 class ViTVGG(torch.nn.Module):
