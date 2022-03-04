@@ -3,7 +3,7 @@ from torchvision import transforms
 import torch.nn.functional as F
 import torchvision
 from extractor import VitExtractor
-from utils import *
+from util_functions import *
 
 
 class LossG(torch.nn.Module):

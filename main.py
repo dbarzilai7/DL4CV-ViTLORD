@@ -6,7 +6,7 @@ from evaluator import Evaluator
 from losses import *
 from dataloader import *
 from datetime import datetime
-from utils import *
+from util_functions import *
 from torch.optim.lr_scheduler import CosineAnnealingLR
 import numpy as np
 from matplotlib import pyplot as plt

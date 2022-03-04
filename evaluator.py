@@ -9,7 +9,7 @@ from matplotlib import pyplot as plt
 from sklearn.manifold import TSNE
 from torchvision.transforms import ToTensor
 from dataloader import UnNormalize
-from utils import *
+from util_functions import *
 
 
 class Evaluator:
