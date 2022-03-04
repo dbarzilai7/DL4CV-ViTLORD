@@ -28,15 +28,14 @@ def load_mnist():
 
 
 def load_LFW():
-    transform = transforms.Compose([transforms.CenterCrop(240),
+    transform = transforms.Compose([transforms.CenterCrop(160),
                                     transforms.PILToTensor(),
-                                    transforms.ConvertImageDtype(torch.float),
-                                    transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))])
-
+                                    transforms.ConvertImageDtype(torch.float)])
+    #,transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
     dataset = LFWIndexed(LFW_PATH, download=True, split='train', transform=transform)
 
     labels_counts = np.unique(dataset.targets, return_counts=True)
-    most_prominent = labels_counts[1].argsort()[-10:-5]
+    most_prominent = labels_counts[1].argsort()[-8:-1]
     labels = labels_counts[0][most_prominent]
     good_indices = np.isin(dataset.targets, labels)
     dataset.data = list(np.array(dataset.data)[good_indices])

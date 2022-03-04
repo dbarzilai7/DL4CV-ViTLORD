@@ -54,7 +54,7 @@ class LossG(torch.nn.Module):
             loss_G += losses['lambda_l2'] * self.lambdas['lambda_l2']
 
         if self.lambdas['content_embedding_reg'] > 0:
-            loss_G += self.lambdas['content_embedding_reg'] * torch.norm(content_embedding) ** 2
+            loss_G += self.lambdas['content_embedding_reg'] * (torch.sum(content_embedding ** 2, dim=1).mean())
 
         losses['loss'] = loss_G
         return losses
@@ -62,7 +62,7 @@ class LossG(torch.nn.Module):
     def calculate_global_ssim_loss(self, outputs, inputs):
         loss = 0.0
         for a, b in zip(inputs, outputs):  # avoid memory limitations
-            a = self.global_resize_transform(a)
+            a = self.global_transform(a)
             b = self.global_transform(b)
             with torch.no_grad():
                 target_keys_self_sim = self.extractor.get_keys_self_sim_from_input(a.unsqueeze(0), layer_num=11)
@@ -74,7 +74,7 @@ class LossG(torch.nn.Module):
         loss = 0.0
         for a, b in zip(outputs, inputs):  # avoid memory limitations
             a = self.global_transform(a).unsqueeze(0).to(DEVICE)
-            b = self.global_resize_transform(b).unsqueeze(0).to(DEVICE)
+            b = self.global_transform(b).unsqueeze(0).to(DEVICE)
             cls_token = self.extractor.get_feature_from_input(a)[-1][0, 0, :]
             with torch.no_grad():
                 target_cls_token = self.extractor.get_feature_from_input(b)[-1][0, 0, :]
@@ -84,7 +84,7 @@ class LossG(torch.nn.Module):
     def calculate_global_id_loss(self, outputs, inputs):
         loss = 0.0
         for a, b in zip(inputs, outputs):
-            a = self.global_resize_transform(a)
+            a = self.global_transform(a)
             b = self.global_transform(b)
             with torch.no_grad():
                 keys_a = self.extractor.get_keys_from_input(a.unsqueeze(0), 11)
@@ -135,7 +135,7 @@ class VGGDistance(torch.nn.Module):
         self.imagenet_norm = transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
 
     def forward(self, outputs, images, content_embedding, epoch=None):
-        I1 = self.imagenet_norm(outputs)
+        I1 = outputs
         I2 = images
 
         b_sz = I1.size(0)
