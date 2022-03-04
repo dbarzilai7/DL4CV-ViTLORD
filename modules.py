@@ -6,6 +6,10 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 from torchvision import models
+from torchvision.transforms import transforms, Resize
+
+from extractor import VitExtractor
+from utils import *
 
 
 class LatentModel(nn.Module):
@@ -21,7 +25,6 @@ class LatentModel(nn.Module):
 		self.modulation = Modulation(cfg['class_dim'], cfg['n_adain_layers'], cfg['adain_dim'])
 
 		self.generator = Generator(cfg['content_dim'], cfg['n_adain_layers'], cfg['adain_dim'], self.image_shape)
-
 
 	def forward(self, img_id, class_id):
 		content_code = self.content_embedding(img_id)
@@ -252,3 +255,28 @@ class AdaptiveInstanceNorm2d(nn.Module):
 
 		out = out.view(b, c, *x.shape[2:])
 		return out
+
+
+class DinoEmbedding(nn.Module):
+	def __init__(self, cfg):
+		super().__init__()
+
+		self.extractor = VitExtractor(model_name=cfg['dino_model_name'], device=DEVICE)
+
+		imagenet_norm = transforms.Normalize(*IMAGENET_NORMALIZATION_VALS)
+		self.global_resize_transform = Resize(cfg['dino_global_patch_size'], max_size=480)
+
+		self.global_transform = transforms.Compose([self.global_resize_transform, imagenet_norm])
+
+	def forward(self, x):
+		content_codes, class_codes = [], []
+		for a in x:  # avoid memory limitations
+			a = self.global_transform(a).unsqueeze(0).to(DEVICE)
+			with torch.no_grad():
+				self_sim = self.extractor.get_keys_self_sim_from_input(a, layer_num=11)
+				cls_token = self.extractor.get_feature_from_input(a)[-1][0, 0, :]
+
+			content_codes.append(cls_token)
+			class_codes.append(self_sim)
+
+		return torch.Tensor(content_codes), torch.Tensor(class_codes)
