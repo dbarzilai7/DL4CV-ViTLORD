@@ -50,7 +50,7 @@ def train_model(model, tboard_name, loss_func, train_loader, device, cfg):
     # start of train
     for epoch in range(epochs):
         if cfg['swap_gen'] and epoch == cfg['warm_up_epochs']:
-            model.reset_generator()
+            model.reset_generator(device)
 
         model.train()
 
