@@ -62,8 +62,8 @@ class LossG(torch.nn.Module):
         for a, b in zip(inputs, outputs):  # avoid memory limitations
             a = self.global_transform(a)
             b = self.global_transform(b)
+            target_keys_self_sim = self.extractor.get_keys_self_sim_from_input(a.unsqueeze(0), layer_num=11)
             with torch.no_grad():
-                target_keys_self_sim = self.extractor.get_keys_self_sim_from_input(a.unsqueeze(0), layer_num=11)
                 keys_ssim = self.extractor.get_keys_self_sim_from_input(b.unsqueeze(0), layer_num=11)
             loss += F.mse_loss(keys_ssim, target_keys_self_sim)
         return loss/len(outputs)
@@ -75,7 +75,7 @@ class LossG(torch.nn.Module):
             b = self.global_transform(b).unsqueeze(0).to(DEVICE)
             with torch.no_grad():
                 cls_token = self.extractor.get_feature_from_input(a)[-1][0, 0, :]
-                target_cls_token = self.extractor.get_feature_from_input(b)[-1][0, 0, :]
+            target_cls_token = self.extractor.get_feature_from_input(b)[-1][0, 0, :]
             loss += F.mse_loss(cls_token, target_cls_token)
         return loss/len(outputs)
 
@@ -84,8 +84,8 @@ class LossG(torch.nn.Module):
         for a, b in zip(inputs, outputs):
             a = self.global_transform(a)
             b = self.global_transform(b)
+            keys_a = self.extractor.get_keys_from_input(a.unsqueeze(0), 11)
             with torch.no_grad():
-                keys_a = self.extractor.get_keys_from_input(a.unsqueeze(0), 11)
                 keys_b = self.extractor.get_keys_from_input(b.unsqueeze(0), 11)
             loss += F.mse_loss(keys_a, keys_b)
         return loss/len(outputs)
