@@ -6,9 +6,9 @@ embedding_type: dino
 
 max_images_to_use: 500
 
-lambda_global_cls: 10
-lambda_global_ssim: 1
-lambda_global_identity: 5
+lambda_global_cls: 0
+lambda_global_ssim: 0
+lambda_global_identity: 10
 lambda_VGG: 1
 lambda_l1: 0
 lambda_l2: 0
