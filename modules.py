@@ -1,5 +1,5 @@
 """
-LARGELY TAKEN FROM https://github.com/avivga/lord-pytorch
+Much of the code is taken from https://github.com/avivga/lord-pytorch
 """
 
 import torch
@@ -9,7 +9,7 @@ from torchvision import models
 from torchvision.transforms import transforms, Resize
 
 from extractor import VitExtractor
-from utils import *
+from util_functions import *
 
 
 class LatentModel(nn.Module):
@@ -20,15 +20,14 @@ class LatentModel(nn.Module):
 		self.image_shape = (image_height, image_width, channels)
 		self.cfg = cfg
 
-		self.content_embedding = RegularizedEmbedding(n_imgs, cfg['content_dim'], cfg['noise_std'])
-		self.class_embedding = nn.Embedding(n_classes, cfg['class_dim'])
+		self.embeddings = LatentModel.build_embedding(cfg, n_imgs, n_classes)
+
 		self.modulation = Modulation(cfg['class_dim'], cfg['n_adain_layers'], cfg['adain_dim'])
 
 		self.generator = Generator(cfg['content_dim'], cfg['n_adain_layers'], cfg['adain_dim'], self.image_shape)
 
-	def forward(self, img_id, class_id):
-		content_code = self.content_embedding(img_id)
-		class_code = self.class_embedding(class_id)
+	def forward(self, content_imgs, content_id, class_imgs, class_id):
+		content_code, class_code = self.embeddings(content_imgs, content_id, class_imgs, class_id)
 		class_adain_params = self.modulation(class_code)
 		generated_img = self.generator(content_code, class_adain_params)
 
@@ -52,6 +51,16 @@ class LatentModel(nn.Module):
 	def weights_init(m):
 		if isinstance(m, nn.Embedding):
 			nn.init.uniform_(m.weight, a=-0.05, b=0.05)
+
+	@staticmethod
+	def build_embedding(cfg, n_imgs, n_classes):
+		if cfg['embedding_type'].lower() == 'basic':
+			return LatentEmbeddings(cfg, n_imgs, n_classes)
+		elif cfg['embedding_type'].lower() == 'dino':
+			return DinoEmbedding(cfg)
+		else:
+			print("Invalid value in embedding_type")
+			exit(0)
 
 
 class AmortizedModel(nn.Module):
@@ -257,6 +266,39 @@ class AdaptiveInstanceNorm2d(nn.Module):
 		return out
 
 
+class SimpleLinearEncoder(nn.Module):
+
+	def __init__(self, out_dim):
+		super().__init__()
+
+		self.fc_layers = nn.Sequential(
+			nn.LazyLinear(out_features=out_dim * 2),
+			nn.LeakyReLU(),
+
+			nn.Linear(in_features=out_dim * 2, out_features=out_dim),
+			nn.LeakyReLU(),
+
+			nn.Linear(out_dim, out_dim)
+		)
+
+	def forward(self, x):
+		return self.fc_layers(x)
+
+
+class LatentEmbeddings(nn.Module):
+	def __init__(self, cfg, n_imgs, n_classes):
+		super().__init__()
+
+		self.content_embedding = RegularizedEmbedding(n_imgs, cfg['content_dim'], cfg['noise_std'])
+		self.class_embedding = nn.Embedding(n_classes, cfg['class_dim'])
+
+	def forward(self, content_imgs, content_id, class_imgs, class_id):
+		content_code = self.content_embedding(content_id)
+		class_code = self.class_embedding(class_id)
+
+		return content_code, class_code
+
+
 class DinoEmbedding(nn.Module):
 	def __init__(self, cfg):
 		super().__init__()
@@ -268,15 +310,22 @@ class DinoEmbedding(nn.Module):
 
 		self.global_transform = transforms.Compose([self.global_resize_transform, imagenet_norm])
 
-	def forward(self, x):
+		self.content_encoder = SimpleLinearEncoder(cfg['content_dim'])
+		self.class_encoder = SimpleLinearEncoder(cfg['class_dim'])
+
+	def forward(self, content_imgs, content_id, class_imgs, class_id):
 		content_codes, class_codes = [], []
-		for a in x:  # avoid memory limitations
-			a = self.global_transform(a).unsqueeze(0).to(DEVICE)
+		for content_im, class_im in zip(content_imgs, class_imgs):  # avoid memory limitations
+			content_im = self.global_transform(content_im).unsqueeze(0).to(DEVICE)
+			class_im = self.global_transform(class_im).unsqueeze(0).to(DEVICE)
 			with torch.no_grad():
-				self_sim = self.extractor.get_keys_self_sim_from_input(a, layer_num=11)
-				cls_token = self.extractor.get_feature_from_input(a)[-1][0, 0, :]
+				self_sim = self.extractor.get_keys_self_sim_from_input(class_im, layer_num=11)
+				cls_token = self.extractor.get_feature_from_input(content_im)[-1][0, 0, :]
 
 			content_codes.append(cls_token)
 			class_codes.append(self_sim)
 
-		return torch.Tensor(content_codes), torch.Tensor(class_codes)
+		content_codes = self.content_encoder(torch.Tensor(content_codes))
+		class_codes = self.class_encoder(torch.Tensor(class_codes))
+
+		return content_codes, class_codes

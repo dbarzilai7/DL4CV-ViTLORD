@@ -1,7 +1,8 @@
-seed: 41
+seed: 36
 
 dataset: LFW
-criterion: Naive
+criterion: VGG
+embedding_type: dino
 
 max_images_to_use: 500
 

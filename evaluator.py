@@ -18,15 +18,15 @@ class Evaluator:
 
         # set up some variables for the visualizations
         self.display_contents = train_loader.dataset.indices[:4]
-        sample_content_images = [(train_loader.dataset.dataset[i][0]) for i in self.display_contents]
-        c, h, w = sample_content_images[0].shape
+        self.sample_content_images = [(train_loader.dataset.dataset[i][0]) for i in self.display_contents]
+        c, h, w = self.sample_content_images[0].shape
         self.labels_counts = np.unique(train_loader.dataset.dataset.targets, return_counts=True)
         self.display_classes = self.labels_counts[0][self.labels_counts[1].argsort()[-4:]]
 
         labels = list(train_loader.dataset.dataset.targets)
         sample_class_indices = [labels.index(i) for i in self.display_classes]
-        samples_classes_ims = [train_loader.dataset.dataset[i][0].unsqueeze(0) for i in sample_class_indices]
-        tboard_classes = torch.cat([torch.zeros(1, c, h, w)] + samples_classes_ims).to(device)
+        self.sample_classes_images = [train_loader.dataset.dataset[i][0].unsqueeze(0) for i in sample_class_indices]
+        tboard_classes = torch.cat([torch.zeros(1, c, h, w)] + self.sample_classes_images).to(device)
         self.tboard_contents = torch.cat(
             [train_loader.dataset.dataset[i][0].unsqueeze(0) for i in self.display_contents]).to(
             device)
@@ -38,13 +38,17 @@ class Evaluator:
         self.non_first_col = np.arange(self.tboard_batch.shape[0])
         self.non_first_col = self.non_first_col[self.non_first_col % (len(self.display_contents) + 1) != 0]
 
-        classes_for_eval, contents_for_eval = [], []
-        for disp_class in self.display_classes:
-            for disp_contents in self.display_contents:
-                classes_for_eval.append(disp_class)
-                contents_for_eval.append(disp_contents)
-        self.contents_for_eval = (torch.Tensor(contents_for_eval).to(torch.long)).to(device)
-        self.classes_for_eval = (torch.from_numpy(class_mapping[np.array(classes_for_eval)])).to(device)
+        class_imgs_for_eval, class_ids_for_eval, content_imgs_for_eval, content_ids_for_eval = [], [], [], []
+        for class_ids, class_imgs in zip(self.display_classes, self.sample_classes_images):
+            for content_ids, content_imgs in zip(self.display_contents, self.sample_content_images):
+                class_imgs_for_eval.append(class_imgs)
+                class_ids_for_eval.append(class_ids)
+                content_imgs_for_eval.append(content_imgs)
+                content_ids_for_eval.append(content_ids)
+        self.content_imgs_for_eval = torch.stack(content_imgs_for_eval).to(device)
+        self.class_imgs_for_eval = torch.stack(class_imgs_for_eval).to(device)
+        self.contents_ids_for_eval = (torch.Tensor(content_ids_for_eval).to(torch.long)).to(device)
+        self.classes_ids_for_eval = (torch.from_numpy(class_mapping[np.array(class_ids_for_eval)])).to(device)
 
         self.writer = writer
         self.device = device
@@ -58,7 +62,8 @@ class Evaluator:
         model.eval()
         with torch.no_grad():
             if epoch % 5 == 0:
-                outputs = model(self.contents_for_eval, self.classes_for_eval)
+                outputs = model(self.content_imgs_for_eval, self.contents_ids_for_eval,
+                                self.class_imgs_for_eval, self.classes_ids_for_eval)
                 #outputs = self.unorm(outputs)
                 self.tboard_batch[non_first_col, ...] = torch.cat((self.tboard_contents, outputs['img']))
                 #self.tboard_batch[0, ...] = model(content_codes[1549].unsqueeze(0), class_codes[18].unsqueeze(0))

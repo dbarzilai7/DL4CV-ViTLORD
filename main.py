@@ -35,8 +35,7 @@ def train_model(model, tboard_name, loss_func, train_loader, device, cfg):
             'lr': cfg['lr_generator']
         },
         {
-            'params': itertools.chain(model.content_embedding.parameters(),
-                                      model.class_embedding.parameters()),
+            'params': itertools.chain(model.embeddings.parameters()),
             'lr': cfg['lr_latent_codes']
         }
     ], betas=(0.5, 0.999))
@@ -66,7 +65,8 @@ def train_model(model, tboard_name, loss_func, train_loader, device, cfg):
             optimizer.zero_grad()
 
             # forward + backward + optimize
-            outputs = model((indices.to(torch.long)).to(device), (torch.from_numpy(class_mapping[labels])).to(device))
+            outputs = model(images, (indices.to(torch.long)).to(device),
+                            images, (torch.from_numpy(class_mapping[labels])).to(device))
 
             losses = loss_func(outputs['img'], images, outputs['content_code'], epoch)
 
