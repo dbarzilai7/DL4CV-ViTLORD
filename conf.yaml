@@ -5,7 +5,10 @@ criterion: ViTVGGAlt
 embedding_type: basic
 model: DecoderEncoder
 
-max_images_to_use: 16
+mix_codes_training: 1
+
+max_images_to_use: 1600
+classes_to_use: 20
 
 lambda_global_cls: 0
 lambda_global_ssim: 0
@@ -13,7 +16,7 @@ lambda_global_identity: 0
 lambda_VGG: 1
 lambda_l1: 0
 lambda_l2: 0
-dino_embedding_l2: 1
+dino_embedding_l2: 0.1
 
 content_reg_dino: 0.001
 content_reg_vgg: 0.0001

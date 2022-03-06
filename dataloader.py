@@ -27,7 +27,7 @@ def load_mnist():
     return MNISTIndexed(MNIST_PATH, download=True, train=True, transform=transform)
 
 
-def load_LFW():
+def load_LFW(classes_to_use):
     transform = transforms.Compose([transforms.CenterCrop(160),
                                     transforms.PILToTensor(),
                                     transforms.ConvertImageDtype(torch.float)])
@@ -35,7 +35,7 @@ def load_LFW():
     dataset = LFWIndexed(LFW_PATH, download=True, split='train', transform=transform)
 
     labels_counts = np.unique(dataset.targets, return_counts=True)
-    most_prominent = labels_counts[1].argsort()[-8:-1]
+    most_prominent = labels_counts[1].argsort()[-classes_to_use:-1]
     labels = labels_counts[0][most_prominent]
     good_indices = np.isin(dataset.targets, labels)
     dataset.data = list(np.array(dataset.data)[good_indices])
@@ -44,11 +44,11 @@ def load_LFW():
     return dataset
 
 
-def load_datasets(name, max_images_to_use, batch_size):
+def load_datasets(name, max_images_to_use, batch_size, classes_to_use):
     if name == "MNIST":
         dataset = load_mnist()
     elif name == "LFW":
-        dataset = load_LFW()
+        dataset = load_LFW(classes_to_use)
     else:
         print("Dataset not supported")
 

@@ -191,15 +191,25 @@ class ViTVGGAlt(torch.nn.Module):
 
 def get_criterion(name, cfg):
     if name == "Naive":
-        return NaiveLoss(cfg)
+        criterion = NaiveLoss(cfg)
     elif name == "ViT":
-        return LossG(cfg)
+        criterion = LossG(cfg)
     elif name == "VGG":
-        return VGGDistance(cfg)
+        criterion = VGGDistance(cfg)
     elif name == "ViTVGG":
-        return ViTVGG(cfg)
+        criterion = ViTVGG(cfg)
     elif name == "ViTVGGAlt":
-        return ViTVGGAlt(cfg)
+        criterion = ViTVGGAlt(cfg)
     else:
         print("Loss not found")
         raise NotImplementedError
+
+    embedding_criterion = None
+    if cfg['model'].lower() == "decoderencoder":
+        cfg_copy = cfg.copy()
+        for k in cfg_copy.keys():
+            if k.startswith('lambda'):
+                cfg_copy[k] = 0
+        embedding_criterion = LossG(cfg_copy).to(DEVICE)
+
+    return criterion.to(DEVICE), embedding_criterion
