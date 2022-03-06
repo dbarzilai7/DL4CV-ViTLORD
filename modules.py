@@ -325,9 +325,27 @@ class DinoEmbedding(nn.Module):
             content_codes.append(cls_token)
             class_codes.append(self_sim)
 
-        content_codes_tensor = torch.stack([torch.tensor(content_codes[i]) for i in range(len(content_codes))], dim=0)
+        content_codes_tensor = torch.stack(content_codes, dim=0)
         content_codes_ret = self.content_encoder(content_codes_tensor)
-        class_codes_tensor = torch.stack([torch.tensor(class_codes[i]) for i in range(len(class_codes))], dim=0)
+        class_codes_tensor = torch.stack(class_codes, dim=0)
         class_codes_ret = self.class_encoder(class_codes_tensor.reshape(class_codes_tensor.shape[0], -1))
 
         return content_codes_ret, class_codes_ret
+
+
+class DecoderEncoder(nn.Module):
+    def __init__(self, cfg, n_imgs, n_classes, image_height, image_width, channels):
+        super().__init__()
+        self.decoder = LatentModel(cfg, n_imgs, n_classes, image_height, image_width, channels)
+        self.encoder = DinoEmbedding(cfg)
+
+    def forward(self, content_imgs, content_id, class_imgs, class_id):
+        out = self.decoder(content_imgs, content_id, class_imgs, class_id)
+        out['out_content_codes'], out['out_class_codes'] = self.encoder(out['img'], content_id, out['img'], class_id)
+        return out
+
+    def init(self):
+        self.decoder.init()
+
+    def reset_generator(self, device=None):
+        self.decoder.reset_generator(device)

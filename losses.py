@@ -4,6 +4,7 @@ import torch.nn.functional as F
 import torchvision
 from extractor import VitExtractor
 from util_functions import *
+from modules import SimpleLinearEncoder
 
 
 class LossG(torch.nn.Module):
@@ -22,12 +23,13 @@ class LossG(torch.nn.Module):
             content_embedding_reg=cfg['content_reg_dino'],
             lambda_l1=cfg['lambda_l1'],
             lambda_l2=cfg['lambda_l2'],
+            dino_embedding_l2=cfg['dino_embedding_l2'],
             lambda_cls=cfg['lambda_global_cls'],
             lambda_ssim=cfg['lambda_global_ssim'],
             lambda_identity=cfg['lambda_global_identity']
         )
 
-    def forward(self, outputs, inputs, content_embedding, epoch=None):
+    def forward(self, outputs, inputs, content_embedding, class_embedding, out_dict, epoch=None):
         losses = {}
         loss_G = 0
 
@@ -54,8 +56,16 @@ class LossG(torch.nn.Module):
         if self.lambdas['content_embedding_reg'] > 0:
             loss_G += self.lambdas['content_embedding_reg'] * (torch.sum(content_embedding ** 2, dim=1).mean())
 
+        if self.lambdas['dino_embedding_l2'] > 0:
+            losses['dino_embedding_l2'] = self.calculate_dino_embedding_l2(content_embedding, class_embedding,
+                                                       out_dict['out_content_codes'], out_dict['out_class_codes'])
+            loss_G += self.lambdas['dino_embedding_l2'] * losses['dino_embedding_l2']
+
         losses['loss'] = loss_G
         return losses
+
+    def calculate_dino_embedding_l2(self, content_embedding, class_embedding, out_content_codes, out_class_codes):
+        return F.mse_loss(out_content_codes, content_embedding) + F.mse_loss(out_class_codes, class_embedding)
 
     def calculate_global_ssim_loss(self, outputs, inputs):
         loss = 0.0
@@ -95,7 +105,7 @@ class NaiveLoss(torch.nn.Module):
     def __init__(self, cfg):
         super().__init__()
 
-    def forward(self, outputs, inputs, content_embedding, epoch=None):
+    def forward(self, outputs, inputs, content_embedding, class_embedding, out_dict, epoch=None):
         l1_loss = torch.nn.L1Loss(reduction='mean')
         l2_loss = torch.nn.MSELoss()
         reg_factor = 1e-3
@@ -132,7 +142,7 @@ class VGGDistance(torch.nn.Module):
 
         self.imagenet_norm = transforms.Normalize(*IMAGENET_NORMALIZATION_VALS)
 
-    def forward(self, outputs, images, content_embedding, epoch=None):
+    def forward(self, outputs, images, content_embedding, class_embedding, out_dict, epoch=None):
         I1 = outputs
         I2 = images
 
@@ -158,10 +168,10 @@ class ViTVGG(torch.nn.Module):
         self.cfg = cfg
         self.warmup_epochs = cfg['warm_up_epochs']
 
-    def forward(self, outputs, inputs, content_embedding, epoch=None):
+    def forward(self, outputs, inputs, content_embedding, class_embedding, out_dict, epoch=None):
         if epoch < self.warmup_epochs:
-            return self.vgg.forward(outputs, inputs, content_embedding, epoch)
-        return self.vit.forward(outputs, inputs, content_embedding, epoch)
+            return self.vgg.forward(outputs, inputs, content_embedding, class_embedding, out_dict, epoch)
+        return self.vit.forward(outputs, inputs, content_embedding, class_embedding, out_dict, epoch)
 
 
 class ViTVGGAlt(torch.nn.Module):
@@ -172,10 +182,11 @@ class ViTVGGAlt(torch.nn.Module):
         self.cfg = cfg
         self.warmup_epochs = cfg['warm_up_epochs']
 
-    def forward(self, outputs, inputs, content_embedding, epoch=None):
-        if epoch % 2 == 0:
-            return self.vgg.forward(outputs, inputs, content_embedding, epoch)
-        return self.vit.forward(outputs, inputs, content_embedding, epoch)
+    def forward(self, outputs, inputs, content_embedding, class_embedding, out_dict, epoch=None):
+        losses = {'loss_vit': self.vit.forward(outputs, inputs, content_embedding, class_embedding, out_dict, epoch)['loss'],
+                  'loss_vgg': self.vgg.forward(outputs, inputs, content_embedding, class_embedding, out_dict, epoch)['loss']}
+        losses['loss'] = losses['loss_vit'] + losses['loss_vgg']
+        return losses
 
 
 def get_criterion(name, cfg):

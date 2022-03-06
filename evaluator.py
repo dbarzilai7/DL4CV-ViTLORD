@@ -46,7 +46,7 @@ class Evaluator:
                 content_imgs_for_eval.append(content_imgs)
                 content_ids_for_eval.append(content_ids)
         self.content_imgs_for_eval = torch.stack(content_imgs_for_eval).to(device)
-        self.class_imgs_for_eval = torch.stack(class_imgs_for_eval).to(device)
+        self.class_imgs_for_eval = torch.stack(class_imgs_for_eval).to(device).squeeze()
         self.contents_ids_for_eval = (torch.Tensor(content_ids_for_eval).to(torch.long)).to(device)
         self.classes_ids_for_eval = (torch.from_numpy(class_mapping[np.array(class_ids_for_eval)])).to(device)
 

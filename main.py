@@ -2,6 +2,7 @@ import itertools
 from torch import optim
 from torch.utils.tensorboard import SummaryWriter
 import modules
+import random
 from evaluator import Evaluator
 from losses import *
 from dataloader import *
@@ -14,7 +15,7 @@ from matplotlib import pyplot as plt
 CONF_PATH = sys.argv[1]  # "./conf.yaml"
 
 
-def train_model(model, tboard_name, loss_func, train_loader, device, cfg):
+def train_model(model, optimizer, tboard_name, loss_func, train_loader, device, cfg):
     writer = SummaryWriter(log_dir='logs/' + tboard_name)
     writer.add_text('TrainConfig', str(cfg))
 
@@ -27,18 +28,6 @@ def train_model(model, tboard_name, loss_func, train_loader, device, cfg):
     # set up class for evaluations and visualizations
     evaluator = Evaluator(train_loader, device, writer, class_mapping)
 
-    # set optimizer and scheduler
-    optimizer = optim.Adam([
-        {
-            'params': itertools.chain(model.modulation.parameters(),
-                                      model.generator.parameters()),
-            'lr': cfg['lr_generator']
-        },
-        {
-            'params': itertools.chain(model.embeddings.parameters()),
-            'lr': cfg['lr_latent_codes']
-        }
-    ], betas=(0.5, 0.999))
     scheduler = CosineAnnealingLR(
         optimizer,
         T_max=epochs * len(train_loader),
@@ -68,7 +57,7 @@ def train_model(model, tboard_name, loss_func, train_loader, device, cfg):
             outputs = model(images, (indices.to(torch.long)).to(device),
                             images, (torch.from_numpy(class_mapping[labels])).to(device))
 
-            losses = loss_func(outputs['img'], images, outputs['content_code'], epoch)
+            losses = loss_func(outputs['img'], images, outputs['content_code'], outputs['class_code'],outputs, epoch)
 
             losses['loss'].backward()
             optimizer.step()
@@ -82,6 +71,42 @@ def train_model(model, tboard_name, loss_func, train_loader, device, cfg):
     writer.close()
 
 
+def get_model_and_optimizer(cfg):
+    if cfg['model'].lower() == "decoderencoder":
+        model = modules.DecoderEncoder(cfg, dataloader.dataset.indices.size, num_classes, h, w, c)
+        optimizer = optim.Adam([
+            {
+                'params': itertools.chain(model.decoder.modulation.parameters(),
+                                          model.decoder.generator.parameters()),
+                'lr': cfg['lr_generator']
+            },
+            {
+                'params': itertools.chain(model.decoder.embeddings.parameters()),
+                'lr': cfg['lr_latent_codes']
+            },
+            {
+                'params': itertools.chain(model.encoder.parameters()),
+                'lr': cfg['lr_encoder']
+            },
+        ], betas=(0.5, 0.999))
+    elif cfg['model'].lower() == "latent":
+        model = modules.LatentModel(cfg, dataloader.dataset.indices.size, num_classes, h, w, c)
+        optimizer = optim.Adam([
+        {
+            'params': itertools.chain(model.modulation.parameters(),
+                                      model.generator.parameters()),
+            'lr': cfg['lr_generator']
+        },
+        {
+            'params': itertools.chain(model.embeddings.parameters()),
+            'lr': cfg['lr_latent_codes']
+        }
+        ], betas=(0.5, 0.999))
+    else:
+        print("Invalid model name")
+        exit(0)
+    return model,optimizer
+
 if __name__ == "__main__":
     print("STARTING")
     cfg = load_conf(CONF_PATH)
@@ -94,8 +119,9 @@ if __name__ == "__main__":
 
     criterion = get_criterion(criterion_name, cfg).to(DEVICE)
 
-    model = modules.LatentModel(cfg, dataloader.dataset.indices.size, num_classes, h, w, c)
-    model.init()
+    model, optimizer = get_model_and_optimizer(cfg)
 
-    log_name = datetime.now().strftime("%d-%m-%Y-%H-%M-%S")
-    train_model(model, log_name, criterion, dataloader, DEVICE, cfg)
+    model.init()
+    rand_num = random.randint(0, 99)
+    log_name = datetime.now().strftime("%d-%m-%Y-%H-%M-%S") + "-" + str(rand_num)
+    train_model(model, optimizer, log_name, criterion, dataloader, DEVICE, cfg)
