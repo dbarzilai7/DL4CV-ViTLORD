@@ -66,7 +66,7 @@ class LossG(torch.nn.Module):
             with torch.no_grad():
                 target_keys_self_sim = self.extractor.get_keys_self_sim_from_input(a.unsqueeze(0), layer_num=11)
             loss += F.mse_loss(keys_ssim, target_keys_self_sim)
-        return loss/len(outputs)
+        return loss / len(outputs)
 
     def calculate_crop_cls_loss(self, outputs, inputs):
         loss = 0.0
@@ -77,7 +77,7 @@ class LossG(torch.nn.Module):
             with torch.no_grad():
                 target_cls_token = self.extractor.get_feature_from_input(b)[-1][0, 0, :]
             loss += F.mse_loss(cls_token, target_cls_token)
-        return loss/len(outputs)
+        return loss / len(outputs)
 
     def calculate_global_id_loss(self, outputs, inputs):
         loss = 0.0
@@ -88,7 +88,7 @@ class LossG(torch.nn.Module):
                 keys_a = self.extractor.get_keys_from_input(a.unsqueeze(0), 11)
             keys_b = self.extractor.get_keys_from_input(b.unsqueeze(0), 11)
             loss += F.mse_loss(keys_a, keys_b)
-        return loss/len(outputs)
+        return loss / len(outputs)
 
 
 class NaiveLoss(torch.nn.Module):
@@ -164,6 +164,20 @@ class ViTVGG(torch.nn.Module):
         return self.vit.forward(outputs, inputs, content_embedding, epoch)
 
 
+class ViTVGGAlt(torch.nn.Module):
+    def __init__(self, cfg):
+        super().__init__()
+        self.vgg = VGGDistance(cfg)
+        self.vit = LossG(cfg)
+        self.cfg = cfg
+        self.warmup_epochs = cfg['warm_up_epochs']
+
+    def forward(self, outputs, inputs, content_embedding, epoch=None):
+        if epoch % 2 == 0:
+            return self.vgg.forward(outputs, inputs, content_embedding, epoch)
+        return self.vit.forward(outputs, inputs, content_embedding, epoch)
+
+
 def get_criterion(name, cfg):
     if name == "Naive":
         return NaiveLoss(cfg)
@@ -173,6 +187,8 @@ def get_criterion(name, cfg):
         return VGGDistance(cfg)
     elif name == "ViTVGG":
         return ViTVGG(cfg)
+    elif name == "ViTVGGAlt":
+        return ViTVGGAlt(cfg)
     else:
         print("Loss not found")
         raise NotImplementedError
