@@ -60,9 +60,6 @@ def train_model(model, optimizer, tboard_name, loss_func, train_loader, device, 
 
             losses = loss_func(outputs['img'], images, outputs['content_code'], outputs['class_code'], outputs, epoch)
 
-            # memory issues
-            del outputs
-
             if prev_images is not None and embedding_criterion is not None and cfg['mix_codes_training'] \
                     and images.shape[0] == prev_images.shape[0]:
                 outputs_mixed = model(images, (indices.to(torch.long)).to(device),
