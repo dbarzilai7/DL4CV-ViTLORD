@@ -5,23 +5,23 @@ criterion: ViTVGGAlt
 embedding_type: basic
 model: DecoderEncoder
 
-mix_codes_training: 1
+mix_codes_training: 0
 
 max_images_to_use: 1600
 classes_to_use: 20
 
 lambda_global_cls: 0
 lambda_global_ssim: 0
-lambda_global_identity: 0
+lambda_global_identity: 1
 lambda_VGG: 1
 lambda_l1: 0
 lambda_l2: 0
-dino_embedding_l2: 0.1
+dino_embedding_l2: 10
 
-content_reg_dino: 0.001
-content_reg_vgg: 0.0001
+content_reg_dino: 0
+content_reg_vgg: 0
 
-dino_model_name: dino_vits8
+dino_model_name: dino_vits16
 dino_global_patch_size: 224
 upsample_mode: bilinear # ['nearest', 'bilinear']
 
@@ -30,13 +30,13 @@ class_dim: 256
 n_adain_layers: 4
 adain_dim: 256
 
-lr_generator: 0.003
-lr_latent_codes: 0.0003
-lr_encoder: 0.001
+lr_generator: 0.0003
+lr_latent_codes: 0.003
+lr_encoder: 0
 
 min_lr: 0.00001
-epochs: 100
-noise_std: 1
+epochs: 300
+noise_std: 0
 batch_size: 16
 
 swap_gen: 0

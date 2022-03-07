@@ -4,6 +4,7 @@ Much of the code is taken from https://github.com/avivga/lord-pytorch
 
 import torch
 import torch.nn.functional as F
+from sklearn.decomposition import PCA
 from torch import nn
 from torchvision import models
 from torchvision.transforms import transforms, Resize
@@ -272,13 +273,13 @@ class SimpleLinearEncoder(nn.Module):
         super().__init__()
 
         self.fc_layers = nn.Sequential(
-            nn.LazyLinear(out_features=out_dim * 2),
-            nn.LeakyReLU(),
-
-            nn.Linear(in_features=out_dim * 2, out_features=out_dim),
-            nn.LeakyReLU(),
-
-            nn.Linear(out_dim, out_dim)
+            nn.LazyLinear(out_features=out_dim),
+            # nn.LeakyReLU(),
+            #
+            # nn.Linear(in_features=out_dim * 2, out_features=out_dim),
+            # nn.LeakyReLU(),
+            #
+            # nn.Linear(out_dim, out_dim)
         )
 
     def forward(self, x):
@@ -313,6 +314,8 @@ class DinoEmbedding(nn.Module):
         self.content_encoder = SimpleLinearEncoder(cfg['content_dim'])
         self.class_encoder = SimpleLinearEncoder(cfg['class_dim'])
 
+        self.pca = PCA(n_components=5)
+
     def forward(self, content_imgs, content_id, class_imgs, class_id):
         content_codes, class_codes = [], []
         for content_im, class_im in zip(content_imgs, class_imgs):  # avoid memory limitations
@@ -322,13 +325,17 @@ class DinoEmbedding(nn.Module):
                 self_sim = self.extractor.get_keys_self_sim_from_input(class_im, layer_num=11)
                 cls_token = self.extractor.get_feature_from_input(content_im)[-1][0, 0, :]
 
-            content_codes.append(cls_token)
-            class_codes.append(self_sim)
+                # self_sim = torch.Tensor(self.pca.fit_transform(self_sim.squeeze().cpu())).to(DEVICE)
 
-        content_codes_tensor = torch.stack(content_codes, dim=0)
-        content_codes_ret = self.content_encoder(content_codes_tensor)
+            content_codes.append(self_sim)
+            class_codes.append(cls_token)
+
+        A = torch.stack(content_codes, dim=0).squeeze()
+        # _, _, V = torch.pca_lowrank(A)
+        # A = torch.bmm(A, V[:, :, :5])
+        content_codes_ret = self.content_encoder(A.reshape(A.shape[0], -1))
         class_codes_tensor = torch.stack(class_codes, dim=0)
-        class_codes_ret = self.class_encoder(class_codes_tensor.reshape(class_codes_tensor.shape[0], -1))
+        class_codes_ret = self.class_encoder(class_codes_tensor)
 
         return content_codes_ret, class_codes_ret
 

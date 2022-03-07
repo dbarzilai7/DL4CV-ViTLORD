@@ -17,14 +17,16 @@ class Evaluator:
         self.unorm = UnNormalize(*IMAGENET_NORMALIZATION_VALS)
 
         # set up some variables for the visualizations
-        self.display_contents = train_loader.dataset.indices[:4]
+        self.display_contents = np.random.choice(train_loader.dataset.indices, 4, replace=False)
         self.sample_content_images = [(train_loader.dataset.dataset[i][0]) for i in self.display_contents]
         c, h, w = self.sample_content_images[0].shape
         self.labels_counts = np.unique(train_loader.dataset.dataset.targets, return_counts=True)
-        self.display_classes = self.labels_counts[0][self.labels_counts[1].argsort()[-4:]]
+        # self.display_classes = self.labels_counts[0][self.labels_counts[1].argsort()[-4:]]
+        self.display_classes = [train_loader.dataset.dataset.targets[i] for i in self.display_contents]
 
         labels = list(train_loader.dataset.dataset.targets)
-        sample_class_indices = [labels.index(i) for i in self.display_classes]
+        # sample_class_indices = [labels.index(i) for i in self.display_classes]
+        sample_class_indices = self.display_contents
         self.sample_classes_images = [train_loader.dataset.dataset[i][0].unsqueeze(0) for i in sample_class_indices]
         tboard_classes = torch.cat([torch.zeros(1, c, h, w)] + self.sample_classes_images).to(device)
         self.tboard_contents = torch.cat(
