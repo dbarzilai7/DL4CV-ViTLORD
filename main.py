@@ -13,6 +13,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 
 CONF_PATH = sys.argv[1]  # "./conf.yaml"
+SAVE_PATH = "./models/{}"
 
 
 def train_model(model, optimizer, tboard_name, loss_func, train_loader, device, cfg, embedding_criterion=None):
@@ -80,6 +81,7 @@ def train_model(model, optimizer, tboard_name, loss_func, train_loader, device, 
         evaluator.eval(model, epoch, all_losses)
 
     writer.close()
+    return model
 
 
 def get_model_and_optimizer(cfg):
@@ -136,4 +138,6 @@ if __name__ == "__main__":
     model.init()
     rand_num = random.randint(0, 1000)
     log_name = datetime.now().strftime("%d-%m-%Y-%H-%M-%S") + "-" + str(rand_num)
-    train_model(model, optimizer, log_name, criterion, dataloader, DEVICE, cfg, embedding_criterion)
+    model = train_model(model, optimizer, log_name, criterion, dataloader, DEVICE, cfg, embedding_criterion)
+
+    torch.save(model.state_dict(), SAVE_PATH.format(log_name))

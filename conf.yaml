@@ -1,18 +1,19 @@
-seed: 36
+seed: 35
 
 dataset: LFW
 criterion: ViTVGGAlt
 embedding_type: basic
 model: DecoderEncoder
+dino_stride: 4
 
 mix_codes_training: 0
 
-max_images_to_use: 1600
+max_images_to_use: 16
 classes_to_use: 20
 
 lambda_global_cls: 0
 lambda_global_ssim: 0
-lambda_global_identity: 1
+lambda_global_identity: 0
 lambda_VGG: 1
 lambda_l1: 0
 lambda_l2: 0
@@ -31,13 +32,16 @@ n_adain_layers: 4
 adain_dim: 256
 
 lr_generator: 0.0003
-lr_latent_codes: 0.003
+lr_latent_codes: 0.0008
 lr_encoder: 0
 
 min_lr: 0.00001
-epochs: 300
+epochs: 200
 noise_std: 0
 batch_size: 16
 
 swap_gen: 0
 warm_up_epochs: 20
+
+pca_ssim: 0
+use_id_for_content: 0

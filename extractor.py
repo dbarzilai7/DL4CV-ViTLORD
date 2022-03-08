@@ -1,4 +1,9 @@
+import math
+from typing import Tuple
+import torch.nn.modules.utils as nn_utils
+import types
 import torch
+from torch import nn
 
 
 def attn_cosine_sim(x, eps=1e-08):
@@ -16,8 +21,10 @@ class VitExtractor:
     QKV_KEY = 'qkv'
     KEY_LIST = [BLOCK_KEY, ATTN_KEY, PATCH_IMD_KEY, QKV_KEY]
 
-    def __init__(self, model_name, device):
+    def __init__(self, model_name, device, cfg):
         self.model = torch.hub.load('facebookresearch/dino:main', model_name).to(device)
+        if cfg['dino_stride']:
+            self.model = VitExtractor.patch_vit_resolution(self.model, cfg['dino_stride'])
         self.model.eval()
         self.model_name = model_name
         self.hook_handlers = []
@@ -140,7 +147,7 @@ class VitExtractor:
         patch_num = self.get_patch_num(input_img_shape)
         head_num = self.get_head_num()
         embedding_dim = self.get_embedding_dim()
-        k = qkv.reshape(patch_num, 3, head_num, embedding_dim // head_num).permute(1, 2, 0, 3)[1]
+        k = qkv.reshape(-1, 3, head_num, embedding_dim // head_num).permute(1, 2, 0, 3)[1]
         return k
 
     def get_values_from_qkv(self, qkv, input_img_shape):
@@ -161,3 +168,62 @@ class VitExtractor:
         concatenated_keys = keys.transpose(0, 1).reshape(t, h * d)
         ssim_map = attn_cosine_sim(concatenated_keys[None, None, ...])
         return ssim_map
+
+    @staticmethod
+    def _fix_pos_enc(patch_size: int, stride_hw: Tuple[int, int]):
+        """
+        Creates a method for position encoding interpolation.
+        :param patch_size: patch size of the model.
+        :param stride_hw: A tuple containing the new height and width stride respectively.
+        :return: the interpolation method
+        """
+
+        def interpolate_pos_encoding(self, x: torch.Tensor, w: int, h: int) -> torch.Tensor:
+            npatch = x.shape[1] - 1
+            N = self.pos_embed.shape[1] - 1
+            if npatch == N and w == h:
+                return self.pos_embed
+            class_pos_embed = self.pos_embed[:, 0]
+            patch_pos_embed = self.pos_embed[:, 1:]
+            dim = x.shape[-1]
+            # compute number of tokens taking stride into account
+            w0 = 1 + (w - patch_size) // stride_hw[1]
+            h0 = 1 + (h - patch_size) // stride_hw[0]
+            assert (w0 * h0 == npatch), f"""got wrong grid size for {h}x{w} with patch_size {patch_size} and 
+                                             stride {stride_hw} got {h0}x{w0}={h0 * w0} expecting {npatch}"""
+            # we add a small number to avoid floating point error in the interpolation
+            # see discussion at https://github.com/facebookresearch/dino/issues/8
+            w0, h0 = w0 + 0.1, h0 + 0.1
+            patch_pos_embed = nn.functional.interpolate(
+                patch_pos_embed.reshape(1, int(math.sqrt(N)), int(math.sqrt(N)), dim).permute(0, 3, 1, 2),
+                scale_factor=(w0 / math.sqrt(N), h0 / math.sqrt(N)),
+                mode='bicubic',
+                align_corners=False, recompute_scale_factor=False
+            )
+            assert int(w0) == patch_pos_embed.shape[-2] and int(h0) == patch_pos_embed.shape[-1]
+            patch_pos_embed = patch_pos_embed.permute(0, 2, 3, 1).view(1, -1, dim)
+            return torch.cat((class_pos_embed.unsqueeze(0), patch_pos_embed), dim=1)
+
+        return interpolate_pos_encoding
+
+    @staticmethod
+    def patch_vit_resolution(model: nn.Module, stride: int) -> nn.Module:
+        """
+        change resolution of model output by changing the stride of the patch extraction.
+        :param model: the model to change resolution for.
+        :param stride: the new stride parameter.
+        :return: the adjusted model
+        """
+        patch_size = model.patch_embed.patch_size
+        if stride == patch_size:  # nothing to do
+            return model
+
+        stride = nn_utils._pair(stride)
+        assert all([(patch_size // s_) * s_ == patch_size for s_ in
+                    stride]), f'stride {stride} should divide patch_size {patch_size}'
+
+        # fix the stride
+        model.patch_embed.proj.stride = stride
+        # fix the positional encoding code
+        model.interpolate_pos_encoding = types.MethodType(VitExtractor._fix_pos_enc(patch_size, stride), model)
+        return model

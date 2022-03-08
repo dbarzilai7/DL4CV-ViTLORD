@@ -304,8 +304,8 @@ class DinoEmbedding(nn.Module):
     def __init__(self, cfg):
         super().__init__()
 
-        self.extractor = VitExtractor(model_name=cfg['dino_model_name'], device=DEVICE)
-
+        self.extractor = VitExtractor(cfg['dino_model_name'], DEVICE, cfg)
+        self.cfg = cfg
         imagenet_norm = transforms.Normalize(*IMAGENET_NORMALIZATION_VALS)
         self.global_resize_transform = Resize(cfg['dino_global_patch_size'], max_size=480)
 
@@ -322,17 +322,21 @@ class DinoEmbedding(nn.Module):
             content_im = self.global_transform(content_im).unsqueeze(0).to(DEVICE)
             class_im = self.global_transform(class_im).unsqueeze(0).to(DEVICE)
             with torch.no_grad():
-                self_sim = self.extractor.get_keys_self_sim_from_input(class_im, layer_num=11)
+                if self.cfg['use_id_for_content']:
+                    structure = self.extractor.get_keys_from_input(class_im, 11)
+                else:
+                    structure = self.extractor.get_keys_self_sim_from_input(class_im, layer_num=11)
                 cls_token = self.extractor.get_feature_from_input(content_im)[-1][0, 0, :]
 
                 # self_sim = torch.Tensor(self.pca.fit_transform(self_sim.squeeze().cpu())).to(DEVICE)
 
-            content_codes.append(self_sim)
+            content_codes.append(structure)
             class_codes.append(cls_token)
 
         A = torch.stack(content_codes, dim=0).squeeze()
-        # _, _, V = torch.pca_lowrank(A)
-        # A = torch.bmm(A, V[:, :, :5])
+        if(self.cfg['pca_ssim']):
+            _, _, V = torch.pca_lowrank(A)
+            A = torch.bmm(A, V[:, :, :self.cfg['pca_ssim']])
         content_codes_ret = self.content_encoder(A.reshape(A.shape[0], -1))
         class_codes_tensor = torch.stack(class_codes, dim=0)
         class_codes_ret = self.class_encoder(class_codes_tensor)

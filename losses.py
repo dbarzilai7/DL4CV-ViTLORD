@@ -12,7 +12,7 @@ class LossG(torch.nn.Module):
     def __init__(self, cfg):
         super().__init__()
         self.cfg = cfg
-        self.extractor = VitExtractor(model_name=cfg['dino_model_name'], device=DEVICE)
+        self.extractor = VitExtractor(cfg['dino_model_name'], DEVICE, cfg)
 
         imagenet_norm = transforms.Normalize(*IMAGENET_NORMALIZATION_VALS)
         self.global_resize_transform = Resize(cfg['dino_global_patch_size'], max_size=480)
@@ -169,7 +169,7 @@ class ViTVGG(torch.nn.Module):
         self.warmup_epochs = cfg['warm_up_epochs']
 
     def forward(self, outputs, inputs, content_embedding, class_embedding, out_dict, epoch=None):
-        if epoch < self.warmup_epochs:
+        if self.warmup_epochs and epoch < self.warmup_epochs:
             return self.vgg.forward(outputs, inputs, content_embedding, class_embedding, out_dict, epoch)
         return self.vit.forward(outputs, inputs, content_embedding, class_embedding, out_dict, epoch)
 
@@ -183,9 +183,19 @@ class ViTVGGAlt(torch.nn.Module):
         self.warmup_epochs = cfg['warm_up_epochs']
 
     def forward(self, outputs, inputs, content_embedding, class_embedding, out_dict, epoch=None):
-        losses = {'loss_vit': self.vit.forward(outputs, inputs, content_embedding, class_embedding, out_dict, epoch)['loss'],
-                  'loss_vgg': self.vgg.forward(outputs, inputs, content_embedding, class_embedding, out_dict, epoch)['loss']}
-        losses['loss'] = losses['loss_vit'] + losses['loss_vgg']
+        vit_losses = self.vit.forward(outputs, inputs, content_embedding, class_embedding, out_dict, epoch)
+        vgg_losses = self.vgg.forward(outputs, inputs, content_embedding, class_embedding, out_dict, epoch)
+
+        losses = {'loss_vit': vit_losses['loss'], 'loss_vgg': vgg_losses['loss']}
+
+        if self.warmup_epochs:
+            if epoch < self.warmup_epochs:
+                losses['loss'] = losses['loss_vgg'] + vit_losses.get('dino_embedding_l2', 0)
+            else:
+                losses['loss'] = losses['loss_vit']
+        else:
+            losses['loss'] = losses['loss_vit'] + losses['loss_vgg']
+
         return losses
 
 
