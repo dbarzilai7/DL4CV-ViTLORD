@@ -108,7 +108,7 @@ class NaiveLoss(torch.nn.Module):
     def forward(self, outputs, inputs, content_embedding, class_embedding, out_dict, epoch=None):
         l1_loss = torch.nn.L1Loss(reduction='mean')
         l2_loss = torch.nn.MSELoss()
-        reg_factor = 1e-3
+        reg_factor = 1e-4
         return {'loss': l1_loss(inputs, outputs) + l2_loss(inputs, outputs) + reg_factor * torch.norm(
             content_embedding) ** 2}
 

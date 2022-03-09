@@ -141,3 +141,6 @@ if __name__ == "__main__":
     model = train_model(model, optimizer, log_name, criterion, dataloader, DEVICE, cfg, embedding_criterion)
 
     torch.save(model.state_dict(), SAVE_PATH.format(log_name))
+
+    with open('./confs/{}'.format(log_name), 'w') as file:
+        documents = yaml.dump(cfg, file)

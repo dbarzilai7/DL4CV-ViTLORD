@@ -1,26 +1,26 @@
 seed: 35
 
 dataset: LFW
-criterion: ViTVGGAlt
+criterion: ViTVGG
 embedding_type: basic
-model: DecoderEncoder
-dino_stride: 4
+model: latent
+dino_stride: 0
 
 mix_codes_training: 0
 
-max_images_to_use: 16
+max_images_to_use: 1600
 classes_to_use: 20
 
 lambda_global_cls: 0
 lambda_global_ssim: 0
-lambda_global_identity: 0
+lambda_global_identity: 10
 lambda_VGG: 1
 lambda_l1: 0
 lambda_l2: 0
-dino_embedding_l2: 10
+dino_embedding_l2: 0
 
-content_reg_dino: 0
-content_reg_vgg: 0
+content_reg_dino: 0.001
+content_reg_vgg: 0.0001
 
 dino_model_name: dino_vits16
 dino_global_patch_size: 224
@@ -37,11 +37,11 @@ lr_encoder: 0
 
 min_lr: 0.00001
 epochs: 200
-noise_std: 0
+noise_std: 1
 batch_size: 16
 
 swap_gen: 0
-warm_up_epochs: 20
+warm_up_epochs: 60
 
 pca_ssim: 0
 use_id_for_content: 0
